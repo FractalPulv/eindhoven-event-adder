@@ -5,12 +5,14 @@ import EventListItem from './EventListItem';
 
 interface EventListProps {
   events: EventData[];
-  selectedEvent: EventData | null;
+  // selectedEvent: EventData | null; // This prop might be for the overlay's event
   onSelectEvent: (event: EventData) => void;
   loadingDetailsFor: string | null;
+  // Add a new prop for the event currently in the overlay to highlight the grid item
+  eventInOverlayId?: string | null; 
 }
 
-const EventList: React.FC<EventListProps> = ({ events, selectedEvent, onSelectEvent, loadingDetailsFor }) => {
+const EventList: React.FC<EventListProps> = ({ events, onSelectEvent, loadingDetailsFor, eventInOverlayId }) => {
   const isLoadingSummaries = events.length === 0 && loadingDetailsFor === null && !selectedEvent; // A simple check if initial load might be happening
   
   return (
@@ -30,7 +32,7 @@ const EventList: React.FC<EventListProps> = ({ events, selectedEvent, onSelectEv
             key={event.id}
             event={event}
             onSelectEvent={onSelectEvent}
-            isSelected={selectedEvent?.id === event.id}
+            isSelectedInGrid={eventInOverlayId === event.id} // Pass this down
             isLoadingDetails={loadingDetailsFor === event.id}
           />
         ))}
