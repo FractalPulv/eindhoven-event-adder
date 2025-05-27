@@ -7,27 +7,34 @@ interface EventListProps {
   events: EventData[];
   selectedEvent: EventData | null;
   onSelectEvent: (event: EventData) => void;
-  loadingDetailsFor: string | null; // New prop
+  loadingDetailsFor: string | null;
 }
 
 const EventList: React.FC<EventListProps> = ({ events, selectedEvent, onSelectEvent, loadingDetailsFor }) => {
+  const isLoadingSummaries = events.length === 0 && loadingDetailsFor === null && !selectedEvent; // A simple check if initial load might be happening
+  
   return (
-    <div className="w-full h-full overflow-y-auto p-4 md:p-6 bg-gray-100 dark:bg-slate-800"> 
-      <h2 className="text-2xl md:text-3xl font-bold mb-4 md:mb-6 text-gray-800 dark:text-gray-100">
-        Eindhoven Events ({events.length})
+    <div className="overflow-y-auto p-3 sm:p-4 bg-gray-100 dark:bg-slate-900 flex-grow"> 
+      <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100 px-1">
+        Eindhoven Events <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({events.length})</span>
       </h2>
-      {events.length === 0 && <p className="text-gray-600 dark:text-gray-300">No events found.</p>}
-      <ul className="space-y-4">
+      
+      {events.length === 0 && !isLoadingSummaries && ( // Check if not loading summaries
+          <p className="text-gray-600 dark:text-gray-300 px-1">No events found.</p>
+      )}
+
+      {/* Grid layout for event items */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4">
         {events.map((event) => (
           <EventListItem
             key={event.id}
             event={event}
             onSelectEvent={onSelectEvent}
             isSelected={selectedEvent?.id === event.id}
-            isLoadingDetails={loadingDetailsFor === event.id} // Pass loading state for this item
+            isLoadingDetails={loadingDetailsFor === event.id}
           />
         ))}
-      </ul>
+      </div>
     </div>
   );
 };

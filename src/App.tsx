@@ -23,7 +23,7 @@ type View = 'list' | 'map';
 
 function App() {
   const [events, setEvents] = useState<EventData[]>([]);
-  const [loading, setLoading] = useState(true); // For initial summary load
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
   const [mapCenter, setMapCenter] = useState<LatLngExpression>(EindhovenCentraalStation);
@@ -35,7 +35,7 @@ function App() {
     return 'light';
   });
   const [currentView, setCurrentView] = useState<View>('list');
-  const [loadingDetailsFor, setLoadingDetailsFor] = useState<string | null>(null); // Store ID of event being detailed
+  const [loadingDetailsFor, setLoadingDetailsFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -49,14 +49,12 @@ function App() {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
   };
 
-  // Fetch initial event summaries
   useEffect(() => {
     const loadEventSummaries = async () => {
       setLoading(true);
       setError(null);
       try {
         const fetchedSummaries = await invoke<EventData[]>("fetch_events_rust");
-        // Mark them as not detailed initially
         setEvents(fetchedSummaries.map(event => ({ ...event, isDetailed: false })));
       } catch (e: any) {
         setError(`Failed to fetch event summaries: ${e.message || e.toString()}`);
@@ -74,48 +72,44 @@ function App() {
       return;
     }
 
-    setSelectedEvent(event); // Select immediately for UI responsiveness
+    setSelectedEvent(event); 
 
     if (event.latitude && event.longitude) {
       setMapCenter([event.latitude, event.longitude]);
-      if (currentView === 'map') setMapZoom(15);
+      if (currentView === 'map') setMapZoom(16); // Zoom in more on map view selection
+    } else if (currentView === 'map') {
+        // If event has no coords but map view is active, reset to default or previous valid center
+        // For simplicity, just reset to Eindhoven general for now
+        setMapCenter(EindhovenCentraalStation);
+        setMapZoom(13);
     }
 
-    // Check if details need to be fetched
+
     if (!event.isDetailed && event.id !== loadingDetailsFor) {
       setLoadingDetailsFor(event.id);
       try {
-        console.log(`Fetching details for: ${event.title} (ID: ${event.id})`);
-        // Pass the summary event object to the backend
         const detailedEvent = await invoke<EventData>("fetch_specific_event_details_rust", { eventSummary: event });
-        
         setEvents(prevEvents => 
           prevEvents.map(e => e.id === detailedEvent.id ? { ...detailedEvent, isDetailed: true } : e)
         );
-        setSelectedEvent({ ...detailedEvent, isDetailed: true }); // Update selected event with full details
-        console.log(`Successfully fetched details for: ${detailedEvent.title}`);
-
+        setSelectedEvent({ ...detailedEvent, isDetailed: true });
       } catch (e: any) {
         console.error(`Failed to fetch details for event ${event.id}:`, e);
-        // Optionally, set an error message for this specific event or a general detail fetch error
-        // For now, the event in the list remains a summary
-        setSelectedEvent(prevSelected => prevSelected && prevSelected.id === event.id ? { ...prevSelected, isDetailed: false } : prevSelected); // Revert isDetailed if fetch failed
+        setSelectedEvent(prevSelected => prevSelected && prevSelected.id === event.id ? { ...prevSelected, isDetailed: false } : prevSelected);
       } finally {
         setLoadingDetailsFor(null);
       }
     } else if (event.isDetailed) {
-      console.log(`Details already fetched for: ${event.title}`);
-      setSelectedEvent(event); // Ensure selectedEvent is the detailed one if already fetched
+      setSelectedEvent(event);
     }
   }, [currentView, loadingDetailsFor]);
 
   const handleAddToCalendar = useCallback(async (event: EventData) => {
     if (!event) return;
-    // Ensure we have detailed data for ICS, especially start_datetime
     let eventForIcs = event;
     if (!event.isDetailed) {
-      alert("Fetching event details for calendar. Please wait a moment and try again if it fails.");
-      setLoadingDetailsFor(event.id); // Indicate loading
+      alert("Fetching event details for calendar. Please wait.");
+      setLoadingDetailsFor(event.id);
       try {
         eventForIcs = await invoke<EventData>("fetch_specific_event_details_rust", { eventSummary: event });
         setEvents(prevEvents => 
@@ -126,7 +120,7 @@ function App() {
         }
       } catch (e) {
         setLoadingDetailsFor(null);
-        alert("Could not fetch event details for calendar generation. Please try selecting the event first.");
+        alert("Could not fetch event details for calendar. Please try selecting the event first.");
         return;
       } finally {
         setLoadingDetailsFor(null);
@@ -134,13 +128,13 @@ function App() {
     }
     
     if (!eventForIcs.start_datetime) {
-        alert("Precise start time not available for this event, cannot add to calendar yet.");
+        alert("Precise start time not available for this event.");
         return;
     }
 
     try {
       const icsContent = await invoke<string>("generate_ics_rust", { eventData: eventForIcs });
-      const suggestedFilename = `${eventForIcs.title.replace(/[^a-z0-9]/gi, '_') || 'event'}.ics`;
+      const suggestedFilename = `${eventForIcs.title.replace(/[^a-z0-9]/gi, '_').substring(0, 50) || 'event'}.ics`;
       const filePath = await save({
         defaultPath: suggestedFilename,
         filters: [{ name: 'iCalendar File', extensions: ['ics'] }]
@@ -150,7 +144,7 @@ function App() {
         alert(`Event "${eventForIcs.title}" saved to ${filePath}`);
       }
     } catch (e: any) {
-      alert(`Error creating calendar file: ${e.message || e.toString() || 'Could not generate or save calendar file.'}`);
+      alert(`Error creating calendar file: ${e.message || e.toString()}`);
       console.error("ICS Error:", e);
     }
   }, [selectedEvent]);
@@ -165,26 +159,32 @@ function App() {
   const mapEvents = events.filter(e => e.latitude && e.longitude);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 dark:bg-slate-800">
+    <div className="flex flex-col h-screen bg-gray-100 dark:bg-slate-900 text-gray-900 dark:text-gray-100 antialiased">
       <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
       
-      <header className="p-3 bg-gray-200 dark:bg-slate-700 flex justify-between items-center shadow-md sticky top-0 z-20">
-        <h1 className="text-xl font-bold text-gray-700 dark:text-gray-200">Eindhoven Event Viewer</h1>
-        <div className="flex space-x-2">
+      <header className="p-3 bg-white dark:bg-slate-800/90 backdrop-blur-sm flex justify-between items-center shadow-lg sticky top-0 z-30 border-b border-gray-200 dark:border-slate-700/70">
+        <h1 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-gray-200">Eindhoven Event Viewer</h1>
+        <div className="flex space-x-1.5 sm:space-x-2">
           <button 
             onClick={() => setCurrentView('list')} 
-            className={`px-4 py-2 rounded font-medium transition-colors text-sm ${currentView === 'list' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-300 hover:bg-gray-400 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-100'}`}
+            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium transition-all duration-200 text-xs sm:text-sm shadow-sm hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800
+                        ${currentView === 'list' 
+                          ? 'bg-blue-600 text-white focus-visible:ring-blue-400' 
+                          : 'bg-gray-200 hover:bg-gray-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-gray-200 focus-visible:ring-gray-400'}`}
           >List View</button>
           <button 
             onClick={() => setCurrentView('map')} 
-            className={`px-4 py-2 rounded font-medium transition-colors text-sm ${currentView === 'map' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-300 hover:bg-gray-400 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-100'}`}
+            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium transition-all duration-200 text-xs sm:text-sm shadow-sm hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800
+                        ${currentView === 'map' 
+                          ? 'bg-blue-600 text-white focus-visible:ring-blue-400' 
+                          : 'bg-gray-200 hover:bg-gray-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-gray-200 focus-visible:ring-gray-400'}`}
           >Map View</button>
         </div>
       </header>
 
-      <main className="flex-grow overflow-y-auto">
-        {loading && <p className="p-4 text-center dark:text-white text-lg">Loading event summaries...</p>}
-        {error && <p className="p-4 text-center text-red-500 dark:text-red-400 text-lg">Error: {error}</p>}
+      <main className="flex-grow overflow-y-auto bg-gray-100 dark:bg-slate-900"> 
+        {loading && <p className="p-4 text-center dark:text-gray-300 text-base">Loading event summaries...</p>}
+        {error && <p className="p-4 text-center text-red-500 dark:text-red-400 text-base">Error: {error}</p>}
         
         {!loading && !error && (
           <>
@@ -193,7 +193,7 @@ function App() {
                 events={events} 
                 selectedEvent={selectedEvent} 
                 onSelectEvent={handleSelectEvent}
-                loadingDetailsFor={loadingDetailsFor} // Pass loading state
+                loadingDetailsFor={loadingDetailsFor}
               />
             )}
             {currentView === 'map' && (
@@ -202,7 +202,7 @@ function App() {
                   events={mapEvents}
                   mapCenter={mapCenter} 
                   mapZoom={mapZoom} 
-                  onMarkerClick={handleSelectEvent} // This will now trigger detail fetching
+                  onMarkerClick={handleSelectEvent}
                   handleAddToCalendar={handleAddToCalendar} 
                   openEventUrl={openEventUrlInBrowser}   
                   theme={theme}
@@ -212,13 +212,11 @@ function App() {
           </>
         )}
       </main>
-      {/* Optional: A global loading indicator for detail fetching if not handled per item
-      {loadingDetailsFor && (
-        <div className="fixed bottom-4 right-4 bg-blue-500 text-white p-3 rounded-lg shadow-lg z-50">
-          Loading details for {events.find(e => e.id === loadingDetailsFor)?.title || 'event'}...
+      {loadingDetailsFor && !selectedEvent?.isDetailed && ( // More specific condition for global loader
+        <div className="fixed bottom-4 right-4 bg-blue-500/90 dark:bg-blue-600/90 backdrop-blur-sm text-white p-2.5 rounded-lg shadow-xl z-50 text-xs font-medium">
+          Loading details for "{events.find(e => e.id === loadingDetailsFor)?.title || 'event'}"...
         </div>
       )}
-      */}
     </div>
   );
 }
