@@ -29,3 +29,4 @@ log = "0.4" # For logging within Rust, useful for debugging
 env_logger = "0.11" # To actually see the log messages
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] } # Async runtime, reqwest might need it
 uuid = { version = "1", features = ["v4", "serde"] } # For generating unique IDs for events
+url = "2.5.4" # For URL parsing and validation
