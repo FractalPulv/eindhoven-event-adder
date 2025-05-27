@@ -241,7 +241,7 @@ pub fn get_all_events_with_details() -> Result<Vec<Event>, Box<dyn Error>> { // 
             match fetch_event_details(&client, summary) { // summary is moved here
                 Ok(detailed_event) => {
                     detailed_events.push(detailed_event);
-                }
+                ``}
                 Err(e) => {
                     // Now use event_id_for_log instead of summary.id
                     log::error!("Failed to fetch details for event {:?}: {}", event_id_for_log, e);
