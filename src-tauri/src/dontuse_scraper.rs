@@ -6,9 +6,12 @@ use std::error::Error;
 use url::Url; // For robust URL joining
 use chrono::{NaiveDate, NaiveTime, NaiveDateTime, Datelike, Utc}; // Added Utc for current year
 use regex::Regex; // Added regex
+use geocoding::{Forward, Point}; // Point and Forward are still relevant
+use geocoding::Nominatim;         // CORRECTED IMPORT FOR v0.4.0: Nominatim is at the root
 
 const BASE_URL: &str = "https://www.thisiseindhoven.com";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+const NOMINATIM_USER_AGENT: &str = "EindhovenEventViewer/0.1 (your-email@example.com; https://yourappdomain.com)"; // Be specific!
 
 // --- Helper Functions ---
 fn get_element_text(element_ref: &ElementRef) -> String {
@@ -219,133 +222,84 @@ fn parse_event_datetimes(
     (parsed_start_datetime, parsed_end_datetime)
 }
 
+// --- Geocoding Function for v0.4.0 ---
+fn geocode_address(address: &str) -> Result<Option<Point<f64>>, Box<dyn Error>> {
+    log::info!("Attempting to geocode address: {}", address);
+    
+    // For geocoding v0.4.0, use Nominatim from the provider module
+    let geocoder = Nominatim::new(NOMINATIM_USER_AGENT);
+    
+    match geocoder.forward(address) {
+        Ok(points) => {
+            if let Some(point) = points.get(0) {
+                log::info!("Geocoded '{}' to Lat: {}, Lon: {}", address, point.y(), point.x());
+                Ok(Some(*point)) 
+            } else {
+                log::warn!("No geocoding results found for address: {}", address);
+                Ok(None)
+            }
+        }
+        Err(e) => {
+            // The error type for geocoding 0.4.0 is geocoding::Error
+            // Log it and return Ok(None) to not break the entire event fetching
+            log::error!("Geocoding error for address '{}': {:?}", address, e);
+            Ok(None) 
+        }
+    }
+}
+
 // --- Event List Scraping ---
 pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn Error>> {
     log::info!("Fetching event list summaries from: {}/en/events", BASE_URL);
     let main_page_url = format!("{}/en/events", BASE_URL);
-
+    // The client passed in from lib.rs should be configured with an app-specific User-Agent
     let response_text = client.get(&main_page_url).send()?.text()?;
     let document = Html::parse_document(&response_text);
-
-    let card_selector = Selector::parse("a.result-card.result-card-generic")
-        .map_err(|e| format!("Failed to parse card_selector: {:?}", e))?;
-
+    let card_selector = Selector::parse("a.result-card.result-card-generic").map_err(|e| format!("Failed to parse card_selector: {:?}", e))?;
     let mut events: Vec<Event> = Vec::new();
-
     for (index, card_element) in document.select(&card_selector).enumerate() {
         let mut event = Event::default();
-        log::debug!("Processing card #{}", index + 1);
-
         event.url_suffix = card_element.value().attr("href").map(str::to_string);
-        if event.url_suffix.is_none() || !event.url_suffix.as_ref().unwrap().starts_with("/en/events/") {
-            log::warn!("Skipping card #{} with invalid or non-event URL: {:?}", index + 1, event.url_suffix);
-            continue;
-        }
+        if event.url_suffix.is_none() || !event.url_suffix.as_ref().unwrap().starts_with("/en/events/") { continue; }
         event.full_url = event.url_suffix.as_ref().map(|s| format!("{}{}", BASE_URL, s));
         event.id = event.url_suffix.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        log::debug!("Event ID: {}, URL Suffix: {:?}", event.id, event.url_suffix);
-
-        // ... (Image parsing code remains the same as my previous corrected version) ...
         let mut image_found_url: Option<String> = None;
-
-        // 1. Try to find <picture> element, then <source srcset>
         let picture_selector = Selector::parse("picture.result-card-generic__picture").map_err(|e| format!("Failed to parse picture_selector: {:?}", e))?;
         if let Some(picture_element) = card_element.select(&picture_selector).next() {
-            log::debug!("Found <picture> element for card #{}", index + 1);
             let source_selector = Selector::parse("source[srcset]").map_err(|e| format!("Failed to parse source_selector: {:?}", e))?;
-            for source_element in picture_element.select(&source_selector) {
-                if let Some(srcset) = source_element.value().attr("srcset") {
-                    log::debug!("Found <source srcset>: {}", srcset);
-                    image_found_url = parse_image_url_from_srcset(srcset, BASE_URL);
-                    if image_found_url.is_some() { break; } 
-                }
-            }
+            for source_element in picture_element.select(&source_selector) { if let Some(srcset) = source_element.value().attr("srcset") { image_found_url = parse_image_url_from_srcset(srcset, BASE_URL); if image_found_url.is_some() { break; } } }
         }
-
         if image_found_url.is_none() {
-            let img_selectors = [
-                "img.result-card-generic__image", 
-                "img"                              
-            ];
+            let img_selectors = ["img.result-card-generic__image", "img"];
             for img_selector_str in &img_selectors {
-                let img_selector = Selector::parse(img_selector_str).map_err(|e| format!("Failed to parse img_selector ({}): {:?}", img_selector_str, e))?;
+                let img_selector = Selector::parse(img_selector_str).map_err(|e| format!("Failed to parse img_selector: {:?}", e))?;
                 if let Some(img_element) = card_element.select(&img_selector).next() {
-                    log::debug!("Found <img> element with selector '{}' for card #{}", img_selector_str, index + 1);
-                    if let Some(srcset) = img_element.value().attr("data-srcset").or_else(|| img_element.value().attr("srcset")) {
-                        log::debug!("Img has data-srcset or srcset: {}", srcset);
-                        image_found_url = parse_image_url_from_srcset(srcset, BASE_URL);
-                    } else if let Some(src) = img_element.value().attr("src") {
-                        log::debug!("Img has src: {}", src);
-                        image_found_url = make_absolute_url(BASE_URL, src);
-                    }
-
-                    if (event.title == "N/A" || event.title.is_empty()) {
-                        if let Some(alt_text) = img_element.value().attr("alt") {
-                            if !alt_text.trim().is_empty() {
-                                event.title = alt_text.trim().to_string();
-                                log::debug!("Using alt text for title: {}", event.title);
-                            }
-                        }
-                    }
+                    if let Some(srcset) = img_element.value().attr("data-srcset").or_else(|| img_element.value().attr("srcset")) { image_found_url = parse_image_url_from_srcset(srcset, BASE_URL); }
+                    else if let Some(src) = img_element.value().attr("src") { image_found_url = make_absolute_url(BASE_URL, src); }
+                    if (event.title == "N/A" || event.title.is_empty()) { if let Some(alt_text) = img_element.value().attr("alt") { if !alt_text.trim().is_empty() { event.title = alt_text.trim().to_string(); } } }
                     if image_found_url.is_some() { break; } 
                 }
             }
-        }
-        
-        if image_found_url.is_some() {
-            log::info!("SUCCESS: Image URL for event '{}': {}", event.id, image_found_url.as_ref().unwrap());
-        } else {
-            log::warn!("FAILURE: No image URL found for event '{}'", event.id);
         }
         event.image_url = image_found_url;
-
-
-        let content_selector = Selector::parse("div.result-card-generic__content")
-            .map_err(|e| format!("Failed to parse content_selector: {:?}", e))?;
+        let content_selector = Selector::parse("div.result-card-generic__content").map_err(|e| format!("Failed to parse content_selector: {:?}", e))?;
         if let Some(content_div) = card_element.select(&content_selector).next() {
-            if event.title == "N/A" || event.title.is_empty() {
-                 event.title = select_first_text(&content_div, "h3.result-card-generic__title")
-                    .unwrap_or_else(|| {
-                        log::warn!("Title not found for card #{}, defaulting.", index + 1);
-                        "Title N/A".to_string()
-                    });
-            }
-            log::debug!("Event Title: {}", event.title);
-
+            if event.title == "N/A" || event.title.is_empty() { event.title = select_first_text(&content_div, "h3.result-card-generic__title").unwrap_or_else(|| "Title N/A".to_string()); }
             event.short_description = select_first_text(&content_div, "p");
-            log::debug!("Short Description: {:?}", event.short_description.as_ref().map(|s| s.chars().take(50).collect::<String>() + "..."));
-
             event.date_time_summary = select_first_text(&content_div, "span.tag > span");
-            log::debug!("Date Summary (tag): {:?}", event.date_time_summary);
-
-            let meta_wrap_selector = Selector::parse("div.meta-labels-wrap")
-                .map_err(|e| format!("Failed to parse meta_wrap_selector: {:?}", e))?;
+            let meta_wrap_selector = Selector::parse("div.meta-labels-wrap").map_err(|e| format!("Failed to parse meta_wrap_selector: {:?}", e))?;
             if let Some(meta_wrap_div) = content_div.select(&meta_wrap_selector).next() {
-                let meta_label_selector = Selector::parse("div.meta-label")
-                    .map_err(|e| format!("Failed to parse meta_label_selector: {:?}", e))?;
+                let meta_label_selector = Selector::parse("div.meta-label").map_err(|e| format!("Failed to parse meta_label_selector: {:?}", e))?;
                 for meta_label_div in meta_wrap_div.select(&meta_label_selector) {
-                    let text = get_element_text(&meta_label_div); // `text` is created here for each meta_label_div
-                    if Selector::parse("span.tie-icon-pin").ok().and_then(|s| meta_label_div.select(&s).next()).is_some() {
-                        event.list_specific_location = Some(text.clone()); // Clone `text` for the Option
-                        log::debug!("Meta Location: {}", text); // Original `text` can be used here
-                    } else if Selector::parse("span.tie-icon-calendar").ok().and_then(|s| meta_label_div.select(&s).next()).is_some() {
-                        event.list_date = Some(text.clone()); // Clone `text` for the Option
-                        if event.date_time_summary.is_none() { 
-                            event.date_time_summary = Some(text.clone()); // Clone `text` again if used here
-                        }
-                        log::debug!("Meta Date: {}", text); // Original `text` can be used here
-                    } else if Selector::parse("span.tie-icon-euro").ok().and_then(|s| meta_label_div.select(&s).next()).is_some() {
-                        event.list_price = Some(text.clone()); // <<<< THE FIX IS HERE: .clone() added
-                        log::debug!("Meta Price: {}", text);    // Original `text` can be used here
-                    }
+                    let text = get_element_text(&meta_label_div);
+                    if Selector::parse("span.tie-icon-pin").ok().and_then(|s| meta_label_div.select(&s).next()).is_some() { event.list_specific_location = Some(text.clone()); }
+                    else if Selector::parse("span.tie-icon-calendar").ok().and_then(|s| meta_label_div.select(&s).next()).is_some() { event.list_date = Some(text.clone()); if event.date_time_summary.is_none() { event.date_time_summary = Some(text.clone()); } }
+                    else if Selector::parse("span.tie-icon-euro").ok().and_then(|s| meta_label_div.select(&s).next()).is_some() { event.list_price = Some(text.clone()); }
                 }
             }
-        } else {
-            log::warn!("Could not find div.result-card-generic__content for card #{}", index + 1);
         }
         events.push(event);
     }
-    log::info!("Found {} event summaries after processing all cards.", events.len());
     Ok(events)
 }
 
@@ -353,87 +307,55 @@ pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn
 pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, Box<dyn Error>> {
     let detail_url = event.full_url.as_ref().ok_or_else(|| "Missing full_url for detail fetching")?;
     log::info!("Fetching details for event '{}' from URL: {}", event.title, detail_url);
-
+    // The client passed in from lib.rs should be configured with an app-specific User-Agent
     let response_text = client.get(detail_url).send()?.text()?;
     let document = Html::parse_document(&response_text);
-
-    let content_container_selector = Selector::parse("div.card-hero-metadata__content")
-        .map_err(|e| format!("Failed to parse detail content_container_selector: {:?}", e))?;
-    
+    let content_container_selector = Selector::parse("div.card-hero-metadata__content").map_err(|e| format!("Failed to parse detail_container: {:?}", e))?;
     if let Some(content_container) = document.select(&content_container_selector).next() {
-        log::debug!("Found 'div.card-hero-metadata__content' for event '{}'", event.title);
-        if let Some(title) = select_first_text(&content_container, "h1") {
-            log::debug!("Detail page H1 title: '{}'. Overwriting list title: '{}'", title, event.title);
-            event.title = title;
-        }
-
-        let text_div_selector = Selector::parse("div.text").map_err(|e| format!("Failed to parse detail text_div_selector: {:?}", e))?;
+        if let Some(title) = select_first_text(&content_container, "h1") { event.title = title; }
+        let text_div_selector = Selector::parse("div.text").map_err(|e| format!("Failed to parse text_div: {:?}", e))?;
         if let Some(text_div) = content_container.select(&text_div_selector).next() {
-            log::debug!("Found 'div.text' in content container");
             event.full_description = select_first_text(&text_div, "p");
-            log::debug!("Full Description (first 50 chars): {:?}", event.full_description.as_ref().map(|s| s.chars().take(50).collect::<String>() + "..."));
-
-            let list_icons_selector = Selector::parse("ul.list-with-icons > li").map_err(|e| format!("Failed to parse detail list_icons_selector: {:?}", e))?;
+            let list_icons_selector = Selector::parse("ul.list-with-icons > li").map_err(|e| format!("Failed to parse list_icons: {:?}", e))?;
             for li_element in text_div.select(&list_icons_selector) {
-                let text_content = li_element.children()
-                    .filter_map(|node| node.value().as_text().map(|t| t.trim()))
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<&str>>()
-                    .join(" ");
-
+                let text_content = li_element.children().filter_map(|node| node.value().as_text().map(|t| t.trim())).filter(|s| !s.is_empty()).collect::<Vec<&str>>().join(" ");
                 if text_content.is_empty() { continue; }
-                log::debug!("Processing li item: {}", text_content);
-
                 if Selector::parse("span.tie-icon-calendar").ok().and_then(|s| li_element.select(&s).next()).is_some() {
                     event.datetime_str_raw_detail = Some(text_content.clone());
-                    log::info!("Raw detail date/time string from site: '{}'", text_content);
-                    
-                    // Call the new parsing function
-                    let (start_dt, end_dt) = parse_event_datetimes(
-                        event.list_date.as_deref(), // Pass the already scraped list_date
-                        event.datetime_str_raw_detail.as_deref(),
-                    );
-                    event.start_datetime = start_dt;
-                    event.end_datetime = end_dt;
-                    log::info!("Parsed start: {:?}, end: {:?}", event.start_datetime, event.end_datetime);
-
-                } else if Selector::parse("span.tie-icon-euro").ok().and_then(|s| li_element.select(&s).next()).is_some() {
-                    event.price = Some(text_content.clone());
-                    log::debug!("Detail Price: {}", text_content);
-                } else if Selector::parse("span.tie-icon-pin").ok().and_then(|s| li_element.select(&s).next()).is_some() {
-                    event.specific_location_name = Some(text_content.clone());
-                    log::debug!("Detail Specific Location Name: {}", text_content);
-                }
+                    let (start_dt, end_dt) = parse_event_datetimes(event.list_date.as_deref(), event.datetime_str_raw_detail.as_deref());
+                    event.start_datetime = start_dt; event.end_datetime = end_dt;
+                } else if Selector::parse("span.tie-icon-euro").ok().and_then(|s| li_element.select(&s).next()).is_some() { event.price = Some(text_content.clone()); }
+                else if Selector::parse("span.tie-icon-pin").ok().and_then(|s| li_element.select(&s).next()).is_some() { event.specific_location_name = Some(text_content.clone()); }
             }
-        } else {  log::warn!("Did not find 'div.text' in content container for event '{}'", event.title); }
-        
-        let address_block_selector = Selector::parse("div[itemprop='address'][itemtype='https://schema.org/PostalAddress']")
-            .map_err(|e| format!("Failed to parse address_block_selector: {:?}", e))?;
+        }
+        let address_block_selector = Selector::parse("div[itemprop='address'][itemtype='https://schema.org/PostalAddress']").map_err(|e| format!("Failed to parse address_block: {:?}", e))?;
         if let Some(address_block) = document.select(&address_block_selector).next() {
-            log::debug!("Found address block for event '{}'", event.title);
             let street = select_first_text(&address_block, "span[itemprop='streetAddress']");
             let postal_code = select_first_text(&address_block, "span[itemprop='postalCode']");
             let locality = select_first_text(&address_block, "span[itemprop='addressLocality']");
-            
             let mut address_parts: Vec<String> = Vec::new();
-            if let Some(loc_name) = &event.specific_location_name { address_parts.push(loc_name.clone()); }
-            else if let Some(list_loc) = &event.list_specific_location { address_parts.push(list_loc.clone());}
-
+            if let Some(loc_name) = &event.specific_location_name { address_parts.push(loc_name.clone()); } else if let Some(list_loc) = &event.list_specific_location { address_parts.push(list_loc.clone());}
             if let Some(s) = street { if !address_parts.contains(&s) { address_parts.push(s); } }
             if let Some(pc) = postal_code { address_parts.push(pc); }
             if let Some(l) = locality { address_parts.push(l); }
-            
             if !address_parts.is_empty() {
                 let full_address = address_parts.join(", ");
-                log::debug!("Parsed Address: {}", full_address);
                 event.address = Some(full_address);
-            } else { log::debug!("No address parts found in address block for event '{}'", event.title); }
-        } else { log::warn!("Address block not found for event '{}'", event.title); }
-    } else {
-        log::warn!("Could not find 'div.card-hero-metadata__content' on detail page for event '{}', URL: {}", event.title, detail_url);
+                if let Some(ref addr_to_geocode) = event.address {
+                    match geocode_address(addr_to_geocode) { // geocode_address is called here
+                        Ok(Some(point)) => { event.latitude = Some(point.y()); event.longitude = Some(point.x());}
+                        Ok(None) => { log::warn!("Geocoding returned no results for: {}", addr_to_geocode); }
+                        Err(e) => { log::error!("Error geocoding '{}': {}", addr_to_geocode, e); }
+                    }
+                }
+                // Delay for Nominatim rate limiting
+                std::thread::sleep(std::time::Duration::from_millis(1100)); 
+            }
+        }
     }
     Ok(event)
 }
+
 
 // --- Orchestration ---
 // THIS FUNCTION IS NO LONGER THE PRIMARY WAY TO GET ALL DATA AT ONCE FOR THE FRONTEND
