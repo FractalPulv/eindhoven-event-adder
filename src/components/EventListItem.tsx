@@ -1,52 +1,56 @@
 // File: src/components/EventListItem.tsx
 import React from 'react';
 import { EventData } from '../types';
+import { CalendarIcon, ClockIcon, PinIcon, EuroIcon } from './Icons'; // Import new icons
 
 interface EventListItemProps {
   event: EventData;
   onSelectEvent: (event: EventData) => void;
   isSelected: boolean;
-  isLoadingDetails?: boolean; // New prop
+  isLoadingDetails?: boolean;
 }
 
 // Helper to format NaiveDateTime string (assuming it's like "YYYY-MM-DDTHH:MM:SS")
-const formatDateTime = (dateTimeStr?: string): string => {
-  if (!dateTimeStr) return 'N/A';
-  try {
-    const date = new Date(dateTimeStr.replace(' ', 'T')); // Ensure ISO-like format for Date constructor
-    if (isNaN(date.getTime())) return dateTimeStr; // Return original if parsing failed
-    return date.toLocaleString(undefined, { 
-      month: 'short', day: 'numeric', 
-      hour: 'numeric', minute: '2-digit', hour12: false 
-    });
-  } catch (e) {
-    console.warn("Error formatting date:", dateTimeStr, e);
-    return dateTimeStr; // Fallback to original string
-  }
-};
+// (Keep your existing formatDate and formatTime helpers as they are good)
 const formatDate = (dateTimeStr?: string): string => {
   if (!dateTimeStr) return 'N/A';
   try {
-    const date = new Date(dateTimeStr.replace(' ', 'T'));
-     if (isNaN(date.getTime())) return dateTimeStr;
+    const date = new Date(dateTimeStr.replace(' ', 'T')); // Ensure 'T' separator for cross-browser
+     if (isNaN(date.getTime())) return dateTimeStr; // Return original if parsing failed
     return date.toLocaleDateString(undefined, { 
       year: 'numeric', month: 'long', day: 'numeric' 
     });
   } catch (e) {
-    return dateTimeStr;
+    return dateTimeStr; // Fallback
   }
 };
+
 const formatTime = (dateTimeStr?: string): string => {
   if (!dateTimeStr) return 'N/A';
   try {
-    const date = new Date(dateTimeStr.replace(' ', 'T'));
-    if (isNaN(date.getTime())) return 'N/A'; // Important check
+    // Replace space with 'T' if your Rust NaiveDateTime string is "YYYY-MM-DD HH:MM:SS"
+    // If it's already "YYYY-MM-DDTHH:MM:SS", this replace won't harm.
+    const date = new Date(dateTimeStr.replace(' ', 'T')); 
+    if (isNaN(date.getTime())) return 'N/A';
     return date.toLocaleTimeString(undefined, { 
       hour: 'numeric', minute: '2-digit', hour12: false 
     });
   } catch (e) {
-    return 'N/A';
+    return 'N/A'; // Fallback
   }
+};
+
+const InfoRow: React.FC<{ icon: React.ReactNode; text: string | React.ReactNode; className?: string }> = ({ icon, text, className = "" }) => {
+  if (!text || text === 'N/A' || (typeof text === 'string' && text.includes('N/A (click to load)'))) {
+    // Optionally hide row or show placeholder if text is N/A and not essential
+    // For now, we'll render it to show "N/A" or loading prompt
+  }
+  return (
+    <div className={`flex items-center space-x-2 text-sm ${className}`}>
+      <span className="flex-shrink-0 w-5 h-5 text-gray-500 dark:text-gray-400">{icon}</span>
+      <span className="text-gray-700 dark:text-gray-300">{text}</span>
+    </div>
+  );
 };
 
 
@@ -62,52 +66,58 @@ const EventListItem: React.FC<EventListItemProps> = ({ event, onSelectEvent, isS
   const displayLocation = event.isDetailed && event.address 
                           ? event.address 
                           : (event.list_specific_location || event.specific_location_name || 'N/A');
+  
+  const displayPrice = event.isDetailed && event.price 
+                       ? event.price 
+                       : (event.list_price || 'N/A');
+  
+  const displayDescription = event.isDetailed && event.full_description
+                             ? event.full_description
+                             : (event.short_description || 'No description available.');
 
   return (
     <li
-      className={`p-4 mb-4 rounded-lg shadow-md hover:shadow-lg transition-all cursor-pointer border-l-4 flex flex-col sm:flex-row items-start space-x-0 sm:space-x-4 relative
-                  ${isSelected ? 'border-blue-500 bg-blue-100 dark:bg-slate-700' : 'border-gray-300 bg-white dark:border-slate-600 dark:bg-slate-800'} 
+      className={`p-4 rounded-xl shadow-lg hover:shadow-xl transition-all cursor-pointer flex flex-col md:flex-row items-start space-x-0 md:space-x-4 relative overflow-hidden
+                  ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-slate-750' : 'bg-white dark:bg-slate-800'} 
                   dark:hover:bg-slate-700`}
       onClick={() => onSelectEvent(event)}
     >
       {isLoadingDetails && (
-        <div className="absolute inset-0 bg-black bg-opacity-10 dark:bg-opacity-50 flex items-center justify-center rounded-lg z-10">
-          <p className="text-white text-sm bg-black bg-opacity-50 px-2 py-1 rounded">Loading details...</p>
+        <div className="absolute inset-0 bg-slate-400 bg-opacity-20 dark:bg-slate-900 dark:bg-opacity-40 backdrop-blur-sm flex items-center justify-center rounded-xl z-10">
+          <p className="text-slate-700 dark:text-slate-200 text-sm font-medium bg-white/70 dark:bg-slate-700/70 px-3 py-1 rounded-full shadow">Loading details...</p>
         </div>
       )}
-      {event.image_url && (
+      
+      {/* Image Container */}
+      {event.image_url ? (
         <img 
           src={event.image_url} 
           alt={event.title} 
-          className="w-full sm:w-32 md:w-40 h-32 object-cover rounded-md mb-3 sm:mb-0 flex-shrink-0" 
+          className="w-full md:w-48 h-40 md:h-auto object-cover rounded-lg mb-4 md:mb-0 flex-shrink-0 self-center md:self-start" 
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
-      )}
-      {!event.image_url && (
-         <div className="w-full sm:w-32 md:w-40 h-32 bg-gray-200 dark:bg-slate-700 rounded-md mb-3 sm:mb-0 flex-shrink-0 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400">
-           Image N/A
+      ) : (
+         <div className="w-full md:w-48 h-40 bg-gray-200 dark:bg-slate-700 rounded-lg mb-4 md:mb-0 flex-shrink-0 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 self-center md:self-start">
+           <p>Image Not Available</p>
          </div>
       )}
-      <div className="flex-grow">
-        <h3 className="font-semibold text-lg text-blue-700 dark:text-blue-400 mb-1">{event.title}</h3>
-        
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">
-          <span className="font-medium">Date:</span> {displayDate}
-        </p>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">
-          <span className="font-medium">Time:</span> {displayTime}
-        </p>
-        <p className="text-sm text-gray-700 dark:text-gray-400 mb-1">
-          <span className="font-medium">Location:</span> {displayLocation}
-        </p>
-        {(event.price || event.list_price) && (
-          <p className="text-sm font-medium text-green-600 dark:text-green-400 mb-1">
-            <span className="font-medium text-gray-700 dark:text-gray-400">Price:</span> {event.isDetailed && event.price ? event.price : (event.list_price || 'N/A')}
-          </p>
-        )}
-        {(event.full_description || event.short_description) && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-            {event.isDetailed && event.full_description ? event.full_description : (event.short_description || 'N/A')}
+      
+      {/* Content Container */}
+      <div className="flex-grow flex flex-col justify-between w-full">
+        <div>
+          <h3 className="font-bold text-xl text-blue-600 dark:text-blue-400 mb-2">{event.title}</h3>
+          
+          <div className="space-y-2 mb-3">
+            {displayDate !== 'N/A' && <InfoRow icon={<CalendarIcon />} text={displayDate} />}
+            {displayTime !== 'Time N/A (click to load)' && displayTime !== 'N/A' && <InfoRow icon={<ClockIcon />} text={displayTime} />}
+            {displayLocation !== 'N/A' && <InfoRow icon={<PinIcon />} text={displayLocation} />}
+            {displayPrice !== 'N/A' && <InfoRow icon={<EuroIcon />} text={displayPrice} className="text-green-600 dark:text-green-400 font-medium" />}
+          </div>
+        </div>
+
+        {displayDescription && displayDescription !== 'No description available.' && (
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed line-clamp-3 md:line-clamp-2">
+            {displayDescription}
           </p>
         )}
       </div>
