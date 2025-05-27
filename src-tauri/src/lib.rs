@@ -1,14 +1,16 @@
 // src-tauri/src/lib.rs
-mod models; // Our data structures
-mod scraper; // Our scraping logic
-// mod geocoder; // Will add later
-// mod ics_generator; // Will add later
+mod models;
+mod scraper;
 
-use models::Event; // Bring Event into scope for command signature
+use models::Event;
+use reqwest::blocking::Client; // For the new command
+use std::time::Duration; // For client timeout
+
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize the logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
@@ -16,9 +18,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
-            greet, // Keep the example greet command for now
-            fetch_events_rust,
-            generate_ics_rust
+            greet,
+            fetch_events_rust, // Will now fetch summaries only
+            fetch_specific_event_details_rust, // New command
+            generate_ics_rust 
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -29,76 +32,100 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-// --- Event Commands ---
-
+// MODIFIED: Now fetches only summaries
 #[tauri::command]
 async fn fetch_events_rust() -> Result<Vec<Event>, String> {
-    log::info!("fetch_events_rust command invoked");
+    log::info!("fetch_events_rust (summaries) command invoked");
     match tauri::async_runtime::spawn_blocking(|| {
-        scraper::get_all_events_with_details()
-            .map_err(|e| e.to_string()) // Convert Box<dyn Error> to String here
+        // Create client here as it's short-lived for this specific task
+        let client_builder = Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_secs(15));
+        
+        match client_builder.build() {
+            Ok(client) => scraper::fetch_event_list_summaries(&client)
+                            .map_err(|e| e.to_string()),
+            Err(e) => Err(format!("Failed to build HTTP client: {}", e.to_string())),
+        }
     }).await {
-        Ok(Ok(events)) => { // Outer Ok is JoinHandle, inner Ok is from your Result
-            log::info!("Successfully fetched {} events.", events.len());
+        Ok(Ok(events)) => {
+            log::info!("Successfully fetched {} event summaries.", events.len());
             Ok(events)
         },
-        Ok(Err(e_str)) => { // Error is now a String
-            log::error!("Error fetching events from scraper: {}", e_str);
-            Err(format!("Scraper error: {}", e_str))
+        Ok(Err(e_str)) => {
+            log::error!("Error fetching event summaries: {}", e_str);
+            Err(format!("Scraper error (summaries): {}", e_str))
         },
-        Err(join_error) => { // JoinError if spawn_blocking panics
-            log::error!("Task panic while fetching events: {}", join_error);
-            Err(format!("Task panic: {}", join_error.to_string()))
+        Err(join_error) => {
+            log::error!("Task panic while fetching event summaries: {}", join_error);
+            Err(format!("Task panic (summaries): {}", join_error.to_string()))
         }
     }
 }
 
+// NEW COMMAND: Fetches details for a single event summary
+#[tauri::command]
+async fn fetch_specific_event_details_rust(event_summary: Event) -> Result<Event, String> {
+    log::info!("fetch_specific_event_details_rust command invoked for event ID: {}", event_summary.id);
+    
+    if event_summary.full_url.is_none() {
+        log::error!("Event summary ID '{}' has no full_url, cannot fetch details.", event_summary.id);
+        return Err(format!("Event '{}' has no URL for fetching details.", event_summary.title));
+    }
+
+    match tauri::async_runtime::spawn_blocking(move || { // move event_summary into the closure
+        let client_builder = Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_secs(15));
+        
+        match client_builder.build() {
+            Ok(client) => {
+                log::debug!("Fetching details for event: {}", event_summary.title);
+                scraper::fetch_event_details(&client, event_summary) // event_summary is consumed here
+                    .map_err(|e| {
+                        log::error!("Error in scraper::fetch_event_details: {}", e.to_string());
+                        e.to_string()
+                    })
+            }
+            Err(e) => {
+                log::error!("Failed to build HTTP client for detail fetch: {}", e.to_string());
+                Err(format!("Failed to build HTTP client: {}", e.to_string()))
+            }
+        }
+    }).await {
+        Ok(Ok(detailed_event)) => {
+            log::info!("Successfully fetched details for event ID: {}", detailed_event.id);
+            Ok(detailed_event)
+        },
+        Ok(Err(e_str)) => {
+            log::error!("Error fetching specific event details: {}", e_str);
+            Err(format!("Scraper error (details): {}", e_str))
+        },
+        Err(join_error) => {
+            log::error!("Task panic while fetching specific event details: {}", join_error);
+            Err(format!("Task panic (details): {}", join_error.to_string()))
+        }
+    }
+}
+
+
 #[tauri::command]
 async fn generate_ics_rust(event_data: Event) -> Result<String, String> {
     log::info!("generate_ics_rust command invoked for event: {}", event_data.title);
-    // TODO: Implement actual ICS generation using a Rust crate (e.g., `ics`)
-    // For now, return a placeholder or the event title
-    
-    // Example using the `ics` crate (add `ics = "0.5"` to Cargo.toml)
-    // use ics::{ICalendar, Event as IcsEvent, Property};
-    // use chrono::{Utc, TimeZone}; // For converting NaiveDateTime
+    // Placeholder ICS generation logic (ensure this uses event_data.start_datetime etc.)
+    let start_time_str = event_data.start_datetime
+        .map(|dt| dt.format("%Y%m%dT%H%M%S").to_string() + "Z") // Assume UTC for simple ICS
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string()); // Fallback
 
-    // let mut calendar = ICalendar::new("2.0", "eindhoven-event-app");
-    // let mut ics_event = IcsEvent::new(uuid::Uuid::new_v4().to_string(), chrono::Utc::now().to_rfc3339());
-
-    // ics_event.push(Property::new("SUMMARY", &event_data.title));
-    // if let Some(start_dt_naive) = event_data.start_datetime {
-    //     // Assuming NaiveDateTime is local time, convert to UTC for ICS or handle as floating
-    //     // For simplicity, let's treat it as floating for now if the `ics` crate supports it
-    //     // Or, convert to UTC: let start_dt_utc = Utc.from_local_datetime(&start_dt_naive).single();
-    //     ics_event.push(Property::new("DTSTART", &start_dt_naive.format("%Y%m%dT%H%M%S").to_string()));
-    // }
-    // if let Some(end_dt_naive) = event_data.end_datetime {
-    //     ics_event.push(Property::new("DTEND", &end_dt_naive.format("%Y%m%dT%H%M%S").to_string()));
-    // }
-    // if let Some(loc) = &event_data.address {
-    //     ics_event.push(Property::new("LOCATION", loc));
-    // }
-    // let mut description_parts: Vec<String> = Vec::new();
-    // if let Some(desc) = &event_data.full_description { description_parts.push(desc.clone()); }
-    // else if let Some(s_desc) = &event_data.short_description { description_parts.push(s_desc.clone()); }
-    // if let Some(price) = &event_data.price { description_parts.push(format!("Price: {}", price)); }
-    // if let Some(url) = &event_data.full_url { 
-    //     description_parts.push(format!("More Info: {}", url));
-    //     ics_event.push(Property::new("URL", url));
-    // }
-    // if !description_parts.is_empty() {
-    //     ics_event.push(Property::new("DESCRIPTION", &description_parts.join("\n\n")));
-    // }
-    // calendar.add_event(ics_event);
-    // Ok(calendar.to_string())
-
-    // Placeholder:
-    Ok(format!("BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Eindhoven Event App//EN\nBEGIN:VEVENT\nUID:{}\nDTSTAMP:{}\nSUMMARY:{}\nDESCRIPTION:Details about {}\nDTSTART:20240101T120000Z\nLOCATION:{}\nEND:VEVENT\nEND:VCALENDAR",
+    Ok(format!(
+        "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Eindhoven Event App//EN\nBEGIN:VEVENT\nUID:{}\nDTSTAMP:{}\nSUMMARY:{}\nDESCRIPTION:Details about {}\\nLocation: {}\\nPrice: {}\nDTSTART:{}\nLOCATION:{}\nEND:VEVENT\nEND:VCALENDAR",
         event_data.id,
         chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
         event_data.title,
-        event_data.title,
+        event_data.full_description.as_deref().unwrap_or_else(|| event_data.short_description.as_deref().unwrap_or("N/A")),
+        event_data.address.as_deref().unwrap_or("Eindhoven"),
+        event_data.price.as_deref().unwrap_or("N/A"),
+        start_time_str, // Use the parsed start time
         event_data.address.as_deref().unwrap_or("Eindhoven")
     ))
 }

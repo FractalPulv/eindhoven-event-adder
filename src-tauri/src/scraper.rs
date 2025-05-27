@@ -1,10 +1,11 @@
 // src-tauri/src/scraper.rs
 use crate::models::Event;
-// use chrono::NaiveDateTime; // Not directly used in this file for parsing, but Event model has it
 use reqwest::blocking::Client;
 use scraper::{ElementRef, Html, Selector};
 use std::error::Error;
 use url::Url; // For robust URL joining
+use chrono::{NaiveDate, NaiveTime, NaiveDateTime, Datelike, Utc}; // Added Utc for current year
+use regex::Regex; // Added regex
 
 const BASE_URL: &str = "https://www.thisiseindhoven.com";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
@@ -73,6 +74,149 @@ fn parse_image_url_from_srcset(srcset: &str, base_url_for_relative: &str) -> Opt
         log::warn!("Could not determine a best URL from srcset: {}", srcset);
         None
     }
+}
+
+// --- NEW: Date and Time Parsing Function ---
+fn parse_event_datetimes(
+    list_date_opt: Option<&str>,
+    datetime_str_raw_detail_opt: Option<&str>,
+) -> (Option<NaiveDateTime>, Option<NaiveDateTime>) {
+    let current_year = Utc::now().year(); // Get current year for context
+    log::debug!(
+        "Attempting to parse datetimes with list_date: {:?}, detail_str: {:?}, current_year: {}",
+        list_date_opt, datetime_str_raw_detail_opt, current_year
+    );
+
+    let mut final_date_str_base: Option<String> = None; // e.g. "28 May" or "1 April"
+    let mut final_year_override: Option<i32> = None; // If year is explicitly in detail_str
+    let mut start_time_str: Option<String> = None;
+    let mut end_time_str: Option<String> = None;
+
+    // Regex to capture:
+    // Optional Day Name (e.g., "Tuesday ")
+    // Date part like "28 May" or "1 April" (Group 1)
+    // Optional Year (Group 2)
+    // Optional comma separator
+    // Optional "Starts at "
+    // Start Time HH:MM (Group 3)
+    // Optional " - "
+    // Optional End Time HH:MM (Group 4)
+    // (?i) makes it case-insensitive for day/month names if needed, though chrono handles month names.
+    let detail_re = Regex::new(
+        r"(?i)(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s+)?(\d{1,2}\s+\w+)(?:\s+(\d{4}))?(?:\s*,\s*)?(?:(?:Starts at\s+)?(\d{2}:\d{2}))?(?:\s*-\s*(\d{2}:\d{2}))?"
+    ).unwrap();
+
+    if let Some(detail_str) = datetime_str_raw_detail_opt {
+        if let Some(caps) = detail_re.captures(detail_str) {
+            log::debug!("Detail string '{}' matched regex. Captures: {:?}", detail_str, caps);
+            if let Some(date_match) = caps.get(1) { // Group 1: Date (e.g., "28 May")
+                final_date_str_base = Some(date_match.as_str().trim().to_string());
+                log::debug!("Date base from detail regex: {}", final_date_str_base.as_ref().unwrap());
+            }
+            if let Some(year_match) = caps.get(2) { // Group 2: Year (e.g., "2025")
+                if let Ok(year) = year_match.as_str().trim().parse::<i32>() {
+                    final_year_override = Some(year);
+                    log::debug!("Year override from detail regex: {}", year);
+                }
+            }
+            if let Some(time_match) = caps.get(3) { // Group 3: Start time
+                start_time_str = Some(time_match.as_str().trim().to_string());
+                log::debug!("Start time from detail regex: {}", start_time_str.as_ref().unwrap());
+            }
+            if let Some(time_match) = caps.get(4) { // Group 4: End time
+                end_time_str = Some(time_match.as_str().trim().to_string());
+                log::debug!("End time from detail regex: {}", end_time_str.as_ref().unwrap());
+            }
+        } else {
+            // If main regex doesn't match, detail_str might *only* be a time range e.g. "10:00 - 17:00"
+            // This is less likely if datetime_str_raw_detail comes from "Day D Month, HH:MM" but good fallback
+            let time_only_re = Regex::new(r"(\d{2}:\d{2})(?:\s*-\s*(\d{2}:\d{2}))?").unwrap();
+            if let Some(time_caps) = time_only_re.captures(detail_str) {
+                log::debug!("Detail string '{}' matched time-only regex. Captures: {:?}", detail_str, time_caps);
+                if let Some(time_match) = time_caps.get(1) { start_time_str = Some(time_match.as_str().trim().to_string()); }
+                if let Some(time_match) = time_caps.get(2) { end_time_str = Some(time_match.as_str().trim().to_string()); }
+            } else {
+                log::warn!("Detail string '{}' did not match any date/time regex.", detail_str);
+            }
+        }
+    }
+
+    // If date base was not extracted from detail_str, try to use list_date_opt
+    if final_date_str_base.is_none() {
+        if let Some(ld_str) = list_date_opt {
+            // list_date_opt might be "DD Month" or "DD Month YYYY" or "DD Mon"
+            // We need to extract the "DD Month" part and potentially a year.
+            let list_date_re = Regex::new(r"(\d{1,2}\s+\w+)(?:\s+(\d{4}))?").unwrap();
+            if let Some(list_caps) = list_date_re.captures(ld_str) {
+                if let Some(date_match) = list_caps.get(1) {
+                    final_date_str_base = Some(date_match.as_str().trim().to_string());
+                    log::debug!("Using list_date for date base: {}", final_date_str_base.as_ref().unwrap());
+                }
+                if final_year_override.is_none() { // Only use year from list if not already found in detail
+                    if let Some(year_match) = list_caps.get(2) {
+                         if let Ok(year) = year_match.as_str().trim().parse::<i32>() {
+                            final_year_override = Some(year);
+                            log::debug!("Year override from list_date: {}", year);
+                        }
+                    }
+                }
+            } else {
+                 log::warn!("List date string '{}' did not match expected format.", ld_str);
+            }
+        }
+    }
+
+    let year_to_use = final_year_override.unwrap_or(current_year);
+
+    // --- Actual Parsing ---
+    let mut parsed_start_datetime: Option<NaiveDateTime> = None;
+    let mut parsed_end_datetime: Option<NaiveDateTime> = None;
+
+    if let Some(date_base_val) = final_date_str_base {
+        let date_with_year = format!("{} {}", date_base_val, year_to_use);
+        log::debug!("Attempting to parse full date string: '{}'", date_with_year);
+
+        // Try parsing with full month name, then abbreviated
+        // Chrono's %B parses full month name (locale-dependent, usually English default)
+        // %b parses abbreviated month name
+        let date_formats = ["%d %B %Y", "%d %b %Y"];
+        let mut naive_date_opt: Option<NaiveDate> = None;
+        for fmt in &date_formats {
+            if let Ok(parsed_date) = NaiveDate::parse_from_str(&date_with_year, fmt) {
+                naive_date_opt = Some(parsed_date);
+                log::debug!("Successfully parsed date '{}' with format '{}'", date_with_year, fmt);
+                break;
+            }
+        }
+
+        if let Some(naive_date) = naive_date_opt {
+            if let Some(st_str) = start_time_str {
+                if let Ok(naive_start_time) = NaiveTime::parse_from_str(&st_str, "%H:%M") {
+                    parsed_start_datetime = Some(naive_date.and_time(naive_start_time));
+                    log::debug!("Parsed start_datetime: {:?}", parsed_start_datetime);
+
+                    if let Some(et_str) = end_time_str {
+                        if let Ok(naive_end_time) = NaiveTime::parse_from_str(&et_str, "%H:%M") {
+                            let mut end_date_to_use = naive_date;
+                            // Handle overnight case: if end time is earlier than start time, assume it's the next day.
+                            if naive_end_time < naive_start_time {
+                                if let Some(next_day) = naive_date.succ_opt() {
+                                    end_date_to_use = next_day;
+                                    log::debug!("End time is earlier than start time, assuming next day: {}", end_date_to_use);
+                                } else {
+                                    log::warn!("Could not determine next day for overnight event.");
+                                }
+                            }
+                            parsed_end_datetime = Some(end_date_to_use.and_time(naive_end_time));
+                            log::debug!("Parsed end_datetime: {:?}", parsed_end_datetime);
+                        } else { log::warn!("Failed to parse end time string: {}", et_str); }
+                    }
+                } else { log::warn!("Failed to parse start time string: {}", st_str); }
+            } else { log::warn!("Start time string was None, though date was parsed."); }
+        } else { log::warn!("Failed to parse date string component: '{}' with year {} using available formats", date_base_val, year_to_use); }
+    } else { log::warn!("Final date string base was None. Cannot parse datetimes."); }
+
+    (parsed_start_datetime, parsed_end_datetime)
 }
 
 // --- Event List Scraping ---
@@ -205,15 +349,13 @@ pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn
     Ok(events)
 }
 
-// ... (fetch_event_details and get_all_events_with_details remain the same as my previous corrected version) ...
-// --- Event Detail Scraping (largely unchanged, ensure logging is present) ---
+// --- Event Detail Scraping ---
 pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, Box<dyn Error>> {
     let detail_url = event.full_url.as_ref().ok_or_else(|| "Missing full_url for detail fetching")?;
     log::info!("Fetching details for event '{}' from URL: {}", event.title, detail_url);
 
     let response_text = client.get(detail_url).send()?.text()?;
     let document = Html::parse_document(&response_text);
-    // event.detail_page_content = Some(response_text.clone()); // Optional: if you need raw HTML later
 
     let content_container_selector = Selector::parse("div.card-hero-metadata__content")
         .map_err(|e| format!("Failed to parse detail content_container_selector: {:?}", e))?;
@@ -225,15 +367,13 @@ pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, B
             event.title = title;
         }
 
-        let text_div_selector = Selector::parse("div.text")
-            .map_err(|e| format!("Failed to parse detail text_div_selector: {:?}", e))?;
+        let text_div_selector = Selector::parse("div.text").map_err(|e| format!("Failed to parse detail text_div_selector: {:?}", e))?;
         if let Some(text_div) = content_container.select(&text_div_selector).next() {
             log::debug!("Found 'div.text' in content container");
             event.full_description = select_first_text(&text_div, "p");
             log::debug!("Full Description (first 50 chars): {:?}", event.full_description.as_ref().map(|s| s.chars().take(50).collect::<String>() + "..."));
 
-            let list_icons_selector = Selector::parse("ul.list-with-icons > li")
-                .map_err(|e| format!("Failed to parse detail list_icons_selector: {:?}", e))?;
+            let list_icons_selector = Selector::parse("ul.list-with-icons > li").map_err(|e| format!("Failed to parse detail list_icons_selector: {:?}", e))?;
             for li_element in text_div.select(&list_icons_selector) {
                 let text_content = li_element.children()
                     .filter_map(|node| node.value().as_text().map(|t| t.trim()))
@@ -246,8 +386,17 @@ pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, B
 
                 if Selector::parse("span.tie-icon-calendar").ok().and_then(|s| li_element.select(&s).next()).is_some() {
                     event.datetime_str_raw_detail = Some(text_content.clone());
-                    log::debug!("Raw detail date/time string: {}", text_content);
-                    // TODO: Parse datetime_str_raw_detail with event.list_date into start_datetime and end_datetime
+                    log::info!("Raw detail date/time string from site: '{}'", text_content);
+                    
+                    // Call the new parsing function
+                    let (start_dt, end_dt) = parse_event_datetimes(
+                        event.list_date.as_deref(), // Pass the already scraped list_date
+                        event.datetime_str_raw_detail.as_deref(),
+                    );
+                    event.start_datetime = start_dt;
+                    event.end_datetime = end_dt;
+                    log::info!("Parsed start: {:?}, end: {:?}", event.start_datetime, event.end_datetime);
+
                 } else if Selector::parse("span.tie-icon-euro").ok().and_then(|s| li_element.select(&s).next()).is_some() {
                     event.price = Some(text_content.clone());
                     log::debug!("Detail Price: {}", text_content);
@@ -278,7 +427,6 @@ pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, B
                 let full_address = address_parts.join(", ");
                 log::debug!("Parsed Address: {}", full_address);
                 event.address = Some(full_address);
-                 // TODO: Geocode this address
             } else { log::debug!("No address parts found in address block for event '{}'", event.title); }
         } else { log::warn!("Address block not found for event '{}'", event.title); }
     } else {
@@ -287,54 +435,22 @@ pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, B
     Ok(event)
 }
 
-// --- Orchestration (ensure logging is present) ---
-pub fn get_all_events_with_details() -> Result<Vec<Event>, Box<dyn Error>> {
-    log::info!("Starting to fetch all events with details...");
-    let client = Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(std::time::Duration::from_secs(15)) // Add a timeout
-        .build()?;
-
-    let event_summaries = match fetch_event_list_summaries(&client) {
-        Ok(summaries) => summaries,
-        Err(e) => {
-            log::error!("CRITICAL: Failed to fetch event list summaries: {}", e);
-            return Err(e); // Propagate critical error
-        }
-    };
-    
-    log::info!("Fetched {} event summaries. Now fetching details for each.", event_summaries.len());
-    let mut detailed_events: Vec<Event> = Vec::new();
-    let mut successful_details_count = 0;
-    let mut failed_details_count = 0;
-
-    for (i, summary) in event_summaries.into_iter().enumerate() { // Use into_iter to take ownership
-        let event_id_for_log = summary.id.clone();
-        let event_title_for_log = summary.title.clone();
-        log::debug!("Processing summary #{} (ID: {}, Title: {})...", i + 1, event_id_for_log, event_title_for_log);
-
-        if summary.full_url.is_some() {
-            match fetch_event_details(&client, summary) { // summary is moved here
-                Ok(detailed_event) => {
-                    detailed_events.push(detailed_event);
-                    successful_details_count += 1;
-                }
-                Err(e) => {
-                    log::error!("Failed to fetch details for event ID '{}' (Title: {}): {}. Original summary might be lost.", event_id_for_log, event_title_for_log, e);
-                    failed_details_count += 1;
-                }
-            }
-        } else {
-            log::warn!("Event summary ID '{}' (Title: {}) has no full_url, cannot fetch details. Adding summary as is.", event_id_for_log, event_title_for_log);
-            detailed_events.push(summary); 
+// --- Orchestration ---
+// THIS FUNCTION IS NO LONGER THE PRIMARY WAY TO GET ALL DATA AT ONCE FOR THE FRONTEND
+// IT CAN BE USED INTERNALLY OR FOR TESTING, BUT `fetch_events_rust` (for summaries)
+// and `fetch_specific_event_details_rust` (for single event details) WILL BE THE TAURI COMMANDS
+pub fn get_all_events_with_details_internal_testing() -> Result<Vec<Event>, Box<dyn Error>> {
+    log::info!("INTERNAL TESTING: Starting to fetch all events with details...");
+    let client = Client::builder().user_agent(USER_AGENT).timeout(std::time::Duration::from_secs(15)).build()?;
+    let event_summaries = fetch_event_list_summaries(&client)?;
+    log::info!("INTERNAL TESTING: Fetched {} event summaries. Now fetching details.", event_summaries.len());
+    let mut detailed_events = Vec::new();
+    for summary in event_summaries {
+        match fetch_event_details(&client, summary) {
+            Ok(detailed_event) => detailed_events.push(detailed_event),
+            Err(e) => log::error!("INTERNAL TESTING: Error fetching details for an event: {}", e),
         }
     }
-    log::info!(
-        "Finished fetching all event details. Total events processed for details: {}. Successfully detailed: {}. Failed to detail: {}. Final event count: {}",
-        successful_details_count + failed_details_count,
-        successful_details_count,
-        failed_details_count,
-        detailed_events.len()
-    );
+    log::info!("INTERNAL TESTING: Finished. Total detailed events: {}", detailed_events.len());
     Ok(detailed_events)
 }

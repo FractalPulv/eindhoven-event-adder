@@ -12,7 +12,6 @@ import { writeTextFile } from '@tauri-apps/plugin-fs';
 // Components
 import EventList from './components/EventList';
 import EventMap from './components/EventMap';
-// import EventDetail from './components/EventDetail'; // Temporarily unused as per simplified view
 import ThemeToggle from './components/ThemeToggle';
 
 // Types
@@ -24,7 +23,7 @@ type View = 'list' | 'map';
 
 function App() {
   const [events, setEvents] = useState<EventData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // For initial summary load
   const [error, setError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
   const [mapCenter, setMapCenter] = useState<LatLngExpression>(EindhovenCentraalStation);
@@ -35,7 +34,8 @@ function App() {
     }
     return 'light';
   });
-  const [currentView, setCurrentView] = useState<View>('list'); // Default to List View
+  const [currentView, setCurrentView] = useState<View>('list');
+  const [loadingDetailsFor, setLoadingDetailsFor] = useState<string | null>(null); // Store ID of event being detailed
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -49,58 +49,116 @@ function App() {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
   };
 
+  // Fetch initial event summaries
   useEffect(() => {
-    const loadEvents = async () => {
+    const loadEventSummaries = async () => {
       setLoading(true);
       setError(null);
       try {
-        const fetchedEvents = await invoke<EventData[]>("fetch_events_rust");
-        setEvents(fetchedEvents);
+        const fetchedSummaries = await invoke<EventData[]>("fetch_events_rust");
+        // Mark them as not detailed initially
+        setEvents(fetchedSummaries.map(event => ({ ...event, isDetailed: false })));
       } catch (e: any) {
-        setError(`Failed to fetch events: ${e.message || e.toString()}`);
-        console.error("Fetch error:", e);
+        setError(`Failed to fetch event summaries: ${e.message || e.toString()}`);
+        console.error("Fetch summaries error:", e);
       } finally {
         setLoading(false);
       }
     };
-    loadEvents();
+    loadEventSummaries();
   }, []);
 
-  const handleSelectEvent = useCallback((event: EventData | null) => {
-    setSelectedEvent(event);
-    if (event && event.latitude && event.longitude) {
-      setMapCenter([event.latitude, event.longitude]);
-      if (currentView === 'map') setMapZoom(15); 
+  const handleSelectEvent = useCallback(async (event: EventData | null) => {
+    if (!event) {
+      setSelectedEvent(null);
+      return;
     }
-  }, [currentView]);
+
+    setSelectedEvent(event); // Select immediately for UI responsiveness
+
+    if (event.latitude && event.longitude) {
+      setMapCenter([event.latitude, event.longitude]);
+      if (currentView === 'map') setMapZoom(15);
+    }
+
+    // Check if details need to be fetched
+    if (!event.isDetailed && event.id !== loadingDetailsFor) {
+      setLoadingDetailsFor(event.id);
+      try {
+        console.log(`Fetching details for: ${event.title} (ID: ${event.id})`);
+        // Pass the summary event object to the backend
+        const detailedEvent = await invoke<EventData>("fetch_specific_event_details_rust", { eventSummary: event });
+        
+        setEvents(prevEvents => 
+          prevEvents.map(e => e.id === detailedEvent.id ? { ...detailedEvent, isDetailed: true } : e)
+        );
+        setSelectedEvent({ ...detailedEvent, isDetailed: true }); // Update selected event with full details
+        console.log(`Successfully fetched details for: ${detailedEvent.title}`);
+
+      } catch (e: any) {
+        console.error(`Failed to fetch details for event ${event.id}:`, e);
+        // Optionally, set an error message for this specific event or a general detail fetch error
+        // For now, the event in the list remains a summary
+        setSelectedEvent(prevSelected => prevSelected && prevSelected.id === event.id ? { ...prevSelected, isDetailed: false } : prevSelected); // Revert isDetailed if fetch failed
+      } finally {
+        setLoadingDetailsFor(null);
+      }
+    } else if (event.isDetailed) {
+      console.log(`Details already fetched for: ${event.title}`);
+      setSelectedEvent(event); // Ensure selectedEvent is the detailed one if already fetched
+    }
+  }, [currentView, loadingDetailsFor]);
 
   const handleAddToCalendar = useCallback(async (event: EventData) => {
     if (!event) return;
+    // Ensure we have detailed data for ICS, especially start_datetime
+    let eventForIcs = event;
+    if (!event.isDetailed) {
+      alert("Fetching event details for calendar. Please wait a moment and try again if it fails.");
+      setLoadingDetailsFor(event.id); // Indicate loading
+      try {
+        eventForIcs = await invoke<EventData>("fetch_specific_event_details_rust", { eventSummary: event });
+        setEvents(prevEvents => 
+          prevEvents.map(e => e.id === eventForIcs.id ? { ...eventForIcs, isDetailed: true } : e)
+        );
+        if (selectedEvent?.id === eventForIcs.id) {
+          setSelectedEvent({ ...eventForIcs, isDetailed: true });
+        }
+      } catch (e) {
+        setLoadingDetailsFor(null);
+        alert("Could not fetch event details for calendar generation. Please try selecting the event first.");
+        return;
+      } finally {
+        setLoadingDetailsFor(null);
+      }
+    }
+    
+    if (!eventForIcs.start_datetime) {
+        alert("Precise start time not available for this event, cannot add to calendar yet.");
+        return;
+    }
+
     try {
-      const icsContent = await invoke<string>("generate_ics_rust", { eventData: event });
-      const suggestedFilename = `${event.title.replace(/[^a-z0-9]/gi, '_') || 'event'}.ics`;
+      const icsContent = await invoke<string>("generate_ics_rust", { eventData: eventForIcs });
+      const suggestedFilename = `${eventForIcs.title.replace(/[^a-z0-9]/gi, '_') || 'event'}.ics`;
       const filePath = await save({
         defaultPath: suggestedFilename,
         filters: [{ name: 'iCalendar File', extensions: ['ics'] }]
       });
       if (filePath) {
         await writeTextFile(filePath, icsContent);
-        alert(`Event "${event.title}" saved to ${filePath}`);
+        alert(`Event "${eventForIcs.title}" saved to ${filePath}`);
       }
     } catch (e: any) {
-      alert(`Error: ${e.message || e.toString() || 'Could not generate or save calendar file.'}`);
+      alert(`Error creating calendar file: ${e.message || e.toString() || 'Could not generate or save calendar file.'}`);
       console.error("ICS Error:", e);
     }
-  }, []);
+  }, [selectedEvent]);
   
   const openEventUrlInBrowser = useCallback(async (url?: string) => {
     if (url) {
-      try {
-        await open(url);
-      } catch (e) {
-        console.error("Open URL Error:", e);
-        alert("Could not open the event link.");
-      }
+      try { await open(url); } 
+      catch (e) { console.error("Open URL Error:", e); alert("Could not open the event link."); }
     }
   }, []);
 
@@ -115,23 +173,17 @@ function App() {
         <div className="flex space-x-2">
           <button 
             onClick={() => setCurrentView('list')} 
-            className={`px-4 py-2 rounded font-medium transition-colors text-sm
-                        ${currentView === 'list' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-300 hover:bg-gray-400 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-100'}`}
-          >
-            List View
-          </button>
+            className={`px-4 py-2 rounded font-medium transition-colors text-sm ${currentView === 'list' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-300 hover:bg-gray-400 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-100'}`}
+          >List View</button>
           <button 
             onClick={() => setCurrentView('map')} 
-            className={`px-4 py-2 rounded font-medium transition-colors text-sm
-                        ${currentView === 'map' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-300 hover:bg-gray-400 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-100'}`}
-          >
-            Map View
-          </button>
+            className={`px-4 py-2 rounded font-medium transition-colors text-sm ${currentView === 'map' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-300 hover:bg-gray-400 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-100'}`}
+          >Map View</button>
         </div>
       </header>
 
-      <main className="flex-grow overflow-y-auto"> {/* Main content area */}
-        {loading && <p className="p-4 text-center dark:text-white text-lg">Loading events...</p>}
+      <main className="flex-grow overflow-y-auto">
+        {loading && <p className="p-4 text-center dark:text-white text-lg">Loading event summaries...</p>}
         {error && <p className="p-4 text-center text-red-500 dark:text-red-400 text-lg">Error: {error}</p>}
         
         {!loading && !error && (
@@ -141,16 +193,16 @@ function App() {
                 events={events} 
                 selectedEvent={selectedEvent} 
                 onSelectEvent={handleSelectEvent}
+                loadingDetailsFor={loadingDetailsFor} // Pass loading state
               />
             )}
-
             {currentView === 'map' && (
               <div className="h-full w-full"> 
                 <EventMap 
                   events={mapEvents}
                   mapCenter={mapCenter} 
                   mapZoom={mapZoom} 
-                  onMarkerClick={handleSelectEvent}
+                  onMarkerClick={handleSelectEvent} // This will now trigger detail fetching
                   handleAddToCalendar={handleAddToCalendar} 
                   openEventUrl={openEventUrlInBrowser}   
                   theme={theme}
@@ -160,20 +212,14 @@ function App() {
           </>
         )}
       </main>
-      {/* The EventDetail component is not rendered here in this simplified layout */}
-      {/* If you want a modal or a dedicated detail panel later, it can be added here,
-          conditionally rendered based on `selectedEvent`. For example:
-      {selectedEvent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-30">
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
-            <button onClick={() => handleSelectEvent(null)} className="float-right text-red-500 font-bold">Close</button>
-            <EventDetail event={selectedEvent} handleAddToCalendar={handleAddToCalendar} openEventUrl={openEventUrlInBrowser} />
-          </div>
+      {/* Optional: A global loading indicator for detail fetching if not handled per item
+      {loadingDetailsFor && (
+        <div className="fixed bottom-4 right-4 bg-blue-500 text-white p-3 rounded-lg shadow-lg z-50">
+          Loading details for {events.find(e => e.id === loadingDetailsFor)?.title || 'event'}...
         </div>
-      )} 
+      )}
       */}
     </div>
   );
 }
-
 export default App;

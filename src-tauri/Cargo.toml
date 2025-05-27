@@ -21,6 +21,7 @@ tauri-plugin-fs = "2.0.0-beta.7"   # Add for writing files (ICS)
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] } # For date/time handling
+regex = "1.11.1" # For regular expressions, useful for parsing text
 
 # --- New Crates for Rust Backend Logic ---
 reqwest = { version = "0.12", features = ["json", "blocking"] } # HTTP client; using "blocking" for simplicity in command handlers
