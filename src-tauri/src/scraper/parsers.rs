@@ -2,11 +2,9 @@
 use reqwest::blocking::Client;
 use scraper::{Html, Selector};
 use std::error::Error;
-use url::Url; // For parsing the iframe src URL
+use url::Url;
 
-// Use items from the utils module
 use super::utils::*;
-// Use items from the models module
 use crate::models::Event;
 
 // fetch_event_list_summaries remains the same
@@ -81,11 +79,14 @@ pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn
     Ok(events)
 }
 
-
 pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, Box<dyn Error>> {
     let detail_url = event.full_url.as_ref().ok_or_else(|| "Missing full_url for detail fetching")?;
     log::info!("Fetching details for event '{}' from URL: {}", event.title, detail_url);
     let response_text = client.get(detail_url).send()?.text()?;
+    
+    // Optional: log the HTML if you still need to debug other parts
+    // log::info!("Fetched HTML for event '{}': {:.2000}", event.title, response_text);
+
     let document = Html::parse_document(&response_text);
     let content_container_selector = Selector::parse("div.card-hero-metadata__content").map_err(|e| format!("Failed to parse detail_container: {:?}", e))?;
 
@@ -136,18 +137,16 @@ pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, B
         }
     }
 
-    // --- NEW: Scrape coordinates from Google Maps iframe ---
-    // The selector might need to be specific to the iframe you identified.
-    // Example: "div.iframe-wrapper iframe" or "div.maps-container iframe"
-    let iframe_selector_str = "div.maps-container iframe"; // Adjust based on the screenshot
-    let iframe_selector = Selector::parse(iframe_selector_str)
-        .map_err(|e| format!("Failed to parse iframe selector '{}': {:?}", iframe_selector_str, e))?;
+    // --- UPDATED: Scrape coordinates from div's data-src attribute ---
+    let maps_container_selector_str = "div.maps-container[data-src]"; // Target the div with class 'maps-container' and a 'data-src' attribute
+    let maps_container_selector = Selector::parse(maps_container_selector_str)
+        .map_err(|e| format!("Failed to parse maps_container selector '{}': {:?}", maps_container_selector_str, e))?;
 
-    if let Some(iframe_element) = document.select(&iframe_selector).next() {
-        log::debug!("Found iframe for event '{}'", event.title);
-        if let Some(src_attr) = iframe_element.value().attr("src") {
-            log::info!("Iframe src for event '{}': {}", event.title, src_attr);
-            match Url::parse(src_attr) {
+    if let Some(maps_container_element) = document.select(&maps_container_selector).next() {
+        log::debug!("Found maps container for event '{}'", event.title);
+        if let Some(data_src_attr) = maps_container_element.value().attr("data-src") {
+            log::info!("Maps container data-src for event '{}': {}", event.title, data_src_attr);
+            match Url::parse(data_src_attr) { // Parse the URL from data-src
                 Ok(parsed_url) => {
                     for (key, value) in parsed_url.query_pairs() {
                         if key == "center" {
@@ -160,25 +159,52 @@ pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, B
                                     log::info!("Successfully parsed coordinates for '{}': Lat: {}, Lon: {}", event.title, lat, lon);
                                     break; 
                                 } else {
-                                    log::warn!("Failed to parse lat/lon from 'center' param: {}", value);
+                                    log::warn!("Failed to parse lat/lon from 'center' param in data-src: {}", value);
                                 }
                             } else {
-                                log::warn!("'center' parameter does not have two parts: {}", value);
+                                log::warn!("'center' parameter in data-src does not have two parts: {}", value);
                             }
                         }
                     }
+                     // If 'center' wasn't found, check if the 'q' parameter might be coordinates directly (less common for 'place' URLs but possible)
+                    if event.latitude.is_none() {
+                        for (key, value) in parsed_url.query_pairs() {
+                            if key == "q" {
+                                log::debug!("Found 'q' parameter: {}", value);
+                                let coords: Vec<&str> = value.split(',').collect();
+                                if coords.len() == 2 {
+                                     if let (Ok(lat), Ok(lon)) = (coords[0].parse::<f64>(), coords[1].parse::<f64>()) {
+                                        // Basic validation for lat/lon ranges
+                                        if (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon) {
+                                            event.latitude = Some(lat);
+                                            event.longitude = Some(lon);
+                                            log::info!("Successfully parsed coordinates from 'q' parameter for '{}': Lat: {}, Lon: {}", event.title, lat, lon);
+                                            break;
+                                        } else {
+                                            log::warn!("Parsed values from 'q' parameter are outside valid lat/lon ranges: {}", value);
+                                        }
+                                    } else {
+                                         log::warn!("Failed to parse lat/lon from 'q' param in data-src: {}", value);
+                                    }
+                                }
+                                break; // Process only the first 'q' param
+                            }
+                        }
+                    }
+
+
                 }
                 Err(e) => {
-                    log::warn!("Failed to parse iframe src URL '{}': {:?}", src_attr, e);
+                    log::warn!("Failed to parse maps_container data-src URL '{}': {:?}", data_src_attr, e);
                 }
             }
         } else {
-            log::warn!("Iframe found for event '{}', but it has no 'src' attribute.", event.title);
+            log::warn!("Maps container found for event '{}', but it has no 'data-src' attribute.", event.title);
         }
     } else {
-        log::warn!("No iframe matching selector '{}' found for event '{}'", iframe_selector_str, event.title);
+        log::warn!("No maps container matching selector '{}' found for event '{}'", maps_container_selector_str, event.title);
     }
-    // --- End new iframe coordinate scraping ---
+    // --- End updated coordinate scraping ---
 
     Ok(event)
 }
