@@ -3,12 +3,6 @@ import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 
-// REMOVE these imports and the L.Icon.Default.mergeOptions block
-// import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
-// import iconUrl from 'leaflet/dist/images/marker-icon.png';
-// import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
-// L.Icon.Default.mergeOptions({ ... }); // REMOVE THIS
-
 interface MiniMapProps {
   center: LatLngExpression;
   zoom?: number;
@@ -29,17 +23,32 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
     ? center
     : [0, 0];
 
-  const tileUrl = theme === 'dark' 
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
-    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-  
-  const tileAttribution = '© <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
+  let tileUrl: string;
+  let tileAttribution: string;
+  let tileSubdomains: string | string[] = 'abc'; // Default
 
+  // NOTE: For production, replace {YOUR_API_KEY} with an actual API key from Stadia Maps.
+  const stadiaApiKey = "YOUR_STADIA_MAPS_API_KEY"; // Replace or remove for dev
+
+  if (theme === 'dark') {
+    // Stadia Alidade Smooth Dark
+    // tileUrl = `https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=${stadiaApiKey}`;
+    tileUrl = 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png'; // Dev URL
+    tileAttribution = '© <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> © <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+    tileSubdomains = ['a', 'b', 'c', 'd'];
+  } else {
+    // CartoDB Voyager for light theme
+    tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    tileAttribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
+    tileSubdomains = 'abcd';
+  }
+  
   const mapId = `minimap-${React.useId()}`; 
 
   return (
     <div id={mapId} className={`w-full rounded-lg overflow-hidden shadow-md ${className}`}>
     <MapContainer
+      key={theme + tileUrl} // Add tileUrl to key
       center={mapCenter}
       zoom={zoom}
       style={{ height: "100%", width: "100%" }}
@@ -53,10 +62,10 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
       <TileLayer
         url={tileUrl}
         attribution={tileAttribution}
-        subdomains='abcd'
+        subdomains={tileSubdomains}
         maxZoom={19}
       />
-      <Marker position={mapCenter} /> {/* It will now use the globally configured default icon */}
+      <Marker position={mapCenter} />
     </MapContainer>
     </div>
   );

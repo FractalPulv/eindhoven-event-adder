@@ -1,21 +1,15 @@
 import React from 'react';
 import ReactDOMServer from 'react-dom/server';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'; // Removed Popup from imports
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L, { LatLngExpression, DivIcon } from 'leaflet';
 import { EventData } from '../types';
 import CustomEventMapMarker from './CustomEventMapMarker';
-
-// Default Leaflet icons are now configured globally in main.tsx
 
 interface EventMapProps {
   events: EventData[];
   mapCenter: LatLngExpression;
   mapZoom: number;
-  onMarkerClick: (event: EventData) => void; // This will now be the primary action
-  // handleAddToCalendar and openEventUrl are no longer needed here if we remove the popup
-  // but they are used by App.tsx for the main overlay, so keep them if App.tsx needs them for other contexts
-  // For clarity, I'll remove them from props if they are *only* for the removed popup.
-  // App.tsx already has access to these functions for the EventDetailOverlay.
+  onMarkerClick: (event: EventData) => void;
   theme: 'light' | 'dark';
 }
 
@@ -29,11 +23,28 @@ function ChangeView({ center, zoom }: { center: LatLngExpression; zoom: number }
 
 const EventMap: React.FC<EventMapProps> = ({ events, mapCenter, mapZoom, onMarkerClick, theme }) => {
   
-  const tileUrl = theme === 'dark' 
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
-    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-  
-  const tileAttribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
+  let tileUrl: string;
+  let tileAttribution: string;
+  let tileSubdomains: string | string[] = 'abc'; // Default
+
+  // NOTE: For production, replace {YOUR_API_KEY} with an actual API key from Stadia Maps.
+  // For development, this URL without a key might work for a bit or show a watermark.
+  const stadiaApiKey = "YOUR_STADIA_MAPS_API_KEY"; // Replace this or remove for dev if it works without
+
+  if (theme === 'dark') {
+    // Stadia Alidade Smooth Dark
+    // If you have an API key:
+    // tileUrl = `https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=${stadiaApiKey}`;
+    // If trying without an API key for development (check their ToS):
+    tileUrl = 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png';
+    tileAttribution = '© <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> © <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
+    tileSubdomains = ['a', 'b', 'c', 'd']; // Stadia often uses subdomains
+  } else {
+    // CartoDB Voyager for light theme
+    tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    tileAttribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
+    tileSubdomains = 'abcd';
+  }
 
   const createCustomIcon = (event: EventData): DivIcon => {
     const html = ReactDOMServer.renderToString(
@@ -47,9 +58,16 @@ const EventMap: React.FC<EventMapProps> = ({ events, mapCenter, mapZoom, onMarke
     });
   };
 
+  // Ensure the API key placeholder is replaced or the URL works for dev
+  if (theme === 'dark' && tileUrl.includes("YOUR_STADIA_MAPS_API_KEY")) {
+      console.warn("Stadia Maps API Key not set for dark theme. Tiles may not load or may be watermarked.");
+  }
+
+
   return (
     <div id="event-map" className="flex-grow h-full" style={{ minHeight: '300px' }}>
       <MapContainer 
+        key={theme + tileUrl} // Add tileUrl to key to ensure remount on URL change
         center={mapCenter} 
         zoom={mapZoom} 
         style={{ height: "100%", width: "100%" }}
@@ -59,8 +77,8 @@ const EventMap: React.FC<EventMapProps> = ({ events, mapCenter, mapZoom, onMarke
         <TileLayer
           url={tileUrl}
           attribution={tileAttribution}
-          subdomains={'abcd'}
-          maxZoom={19}
+          subdomains={tileSubdomains}
+          maxZoom={19} // Stadia supports up to zoom 20
         />
         {events.map((event) => (
           <Marker 
@@ -69,12 +87,10 @@ const EventMap: React.FC<EventMapProps> = ({ events, mapCenter, mapZoom, onMarke
             icon={createCustomIcon(event)}
             eventHandlers={{ 
               click: () => {
-                console.log("Marker clicked on EventMap, triggering onMarkerClick for:", event.title);
-                onMarkerClick(event); // This will call handleSelectEvent in App.tsx
+                onMarkerClick(event);
               }
             }}
           >
-            {/* REMOVED THE <Popup> COMPONENT ENTIRELY */}
           </Marker>
         ))}
       </MapContainer>
