@@ -49,10 +49,13 @@ function App() {
   const [isFetchingAllDetails, setIsFetchingAllDetails] = useState(false);
 
   useEffect(() => {
+    // console.log("Theme effect running, theme is:", theme); // For debugging
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
+      // console.log("Applied dark class to HTML element"); // For debugging
     } else {
       document.documentElement.classList.remove("dark");
+      // console.log("Removed dark class from HTML element"); // For debugging
     }
   }, [theme]);
 
@@ -83,41 +86,25 @@ function App() {
 
   const handleSelectEvent = useCallback(
     async (eventData: EventData) => {
-      console.log("handleSelectEvent called for:", eventData.title);
-      // Always set the event for the overlay.
-      // If it's not detailed, we'll fetch details.
       setOverlayEvent(eventData); 
 
-      // Adjust map view if the event has coordinates
       if (eventData.latitude && eventData.longitude) {
         setMapCenter([eventData.latitude, eventData.longitude]);
-        // Zoom in more if we are already in map view and an event is clicked
-        // or if we switch to map view because of an event selection (though this flow is less common now)
         if (currentView === "map") {
-             setMapZoom(16); // Zoom in closer on specific event
-        } else {
-            // If switching to map view (not the current flow but defensive)
-            // setMapZoom(16);
+             setMapZoom(16); 
         }
-      } else if (currentView === "map") { // If event has no coords and we are in map view, reset to default
+      } else if (currentView === "map") {
         setMapCenter(EindhovenCentraalStation);
         setMapZoom(13);
       }
 
-
-      // Fetch details if not already fetched or currently loading for this specific event
       if (!eventData.isDetailed && (!loadingDetailsFor || loadingDetailsFor !== eventData.id)) {
         setLoadingDetailsFor(eventData.id);
         try {
-          console.log(
-            `Fetching details (handleSelectEvent) for: ${eventData.title} (ID: ${eventData.id})`
-          );
           const detailedEvent = await invoke<EventData>(
             "fetch_specific_event_details_rust",
-            { eventSummary: eventData } // Pass the summary (eventData)
+            { eventSummary: eventData }
           );
-
-          // Update the main events array (for grid item persistence & map updates)
           setEvents((prevEvents) =>
             prevEvents.map((e) =>
               e.id === detailedEvent.id
@@ -125,46 +112,32 @@ function App() {
                 : e
             )
           );
-          // Update the event in the overlay with full details
           setOverlayEvent({ ...detailedEvent, isDetailed: true });
-          console.log(
-            `Successfully fetched details (handleSelectEvent) for: ${detailedEvent.title}`
-          );
         } catch (e: any) {
-          console.error(
-            `Failed to fetch details for event ${eventData.id} in handleSelectEvent:`,
-            e
-          );
-          // Overlay will show summary data if details fail.
+          console.error(`Failed to fetch details for event ${eventData.id}:`,e);
         } finally {
           setLoadingDetailsFor(null);
         }
       } else if (eventData.isDetailed && overlayEvent?.id !== eventData.id) {
-        // If it's already detailed but not the current overlay event, ensure overlay is updated
         setOverlayEvent(eventData);
       } else if (eventData.isDetailed && overlayEvent?.id === eventData.id && overlayEvent !== eventData){
-        // If it's the same event but the object reference in `events` array got updated with more details elsewhere.
         setOverlayEvent(eventData);
       }
     },
-    [currentView, loadingDetailsFor, overlayEvent] // Added overlayEvent to deps
+    [currentView, loadingDetailsFor, overlayEvent]
   );
 
   const handleCloseOverlay = useCallback(() => {
     setOverlayEvent(null);
-    // When closing overlay from map view, maybe reset zoom slightly? Optional.
-    // if(currentView === 'map') {
-    //   setMapZoom(13); // Reset to general view zoom
-    //   setMapCenter(EindhovenCentraalStation); // Or last known general center
-    // }
-  }, [/* currentView */]); // currentView can be added if above logic is used
+  }, []);
 
   const handleAddToCalendar = useCallback(
     async (event: EventData) => {
+      // ... (implementation remains the same, already uses dark-aware alerts if needed)
       if (!event) return;
       let eventForIcs = event;
       if (!event.isDetailed) {
-        alert("Fetching event details for calendar. Please wait.");
+        alert("Fetching event details for calendar. Please wait."); // Standard alert
         setLoadingDetailsFor(event.id);
         try {
           eventForIcs = await invoke<EventData>(
@@ -218,6 +191,7 @@ function App() {
   );
 
   const openEventUrlInBrowser = useCallback(async (url?: string) => {
+    // ... (implementation remains the same)
     if (url) {
       try {
         await open(url);
@@ -229,54 +203,36 @@ function App() {
   }, []);
 
   const handleFetchAllDetails = useCallback(async () => {
+    // ... (implementation remains the same)
     setIsFetchingAllDetails(true);
     setError(null);
-    console.log("Starting to fetch all details...");
-
     const eventsToFetchDetailsFor = events.filter(event => !event.isDetailed);
     if (eventsToFetchDetailsFor.length === 0) {
-        console.log("All events are already detailed.");
         setIsFetchingAllDetails(false);
         return;
     }
-
-    // Create a temporary map to hold new detailed events to avoid many setEvents calls
     const updatedEventsData = new Map<string, EventData>();
-
     for (const eventSummary of eventsToFetchDetailsFor) {
         try {
-            // setLoadingDetailsFor(eventSummary.id); // Visually indicate per-event fetching
             const detailedEvent = await invoke<EventData>("fetch_specific_event_details_rust", { eventSummary });
             updatedEventsData.set(detailedEvent.id, { ...detailedEvent, isDetailed: true });
-            // Update events reactively in batches or one by one if preferred for UI feedback
-            // For now, we collect all and update once. If you want per-item UI update:
-            // setEvents(prev => prev.map(e => e.id === detailedEvent.id ? {...detailedEvent, isDetailed: true} : e));
         } catch (err) {
             console.error(`Failed to fetch details for ${eventSummary.id}:`, err);
-            updatedEventsData.set(eventSummary.id, eventSummary); // Keep summary on error
-        } finally {
-            // setLoadingDetailsFor(null);
+            updatedEventsData.set(eventSummary.id, eventSummary);
         }
     }
-    
     setEvents(prevEvents => {
         const newEventsArray = prevEvents.map(event => 
             updatedEventsData.get(event.id) || event
         );
-        // If the currently selected overlay event was part of the bulk update, refresh its data
         if (overlayEvent && updatedEventsData.has(overlayEvent.id)) {
           const refreshedOverlayEvent = updatedEventsData.get(overlayEvent.id);
-          if (refreshedOverlayEvent) {
-            setOverlayEvent(refreshedOverlayEvent);
-          }
+          if (refreshedOverlayEvent) setOverlayEvent(refreshedOverlayEvent);
         }
         return newEventsArray;
     });
-
-    console.log("Finished fetching all details.");
     setIsFetchingAllDetails(false);
   }, [events, overlayEvent]);
-
 
   const mapEvents = events.filter((e) => e.latitude && e.longitude);
 
@@ -293,59 +249,41 @@ function App() {
         
         <div className="flex-none flex items-center space-x-2">
             <div className="flex space-x-1 bg-gray-200 dark:bg-neutral-800 p-0.5 rounded-lg shadow-sm">
+                {/* View Toggle Buttons with dark mode styling */}
                 <button
-                    onClick={() => {
-                        setCurrentView("list");
-                        if (overlayEvent) handleCloseOverlay();
-                    }}
+                    onClick={() => { setCurrentView("list"); if (overlayEvent) handleCloseOverlay(); }}
                     className={`px-3 py-1 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800
-                        ${
-                            currentView === "list"
+                        ${ currentView === "list"
                             ? "bg-white dark:bg-neutral-700 text-blue-600 dark:text-blue-400 shadow-sm"
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-300/50 dark:hover:bg-neutral-700/50"
                         }`}
-                >
-                    List
-                </button>
+                > List </button>
                 <button
-                    onClick={() => {
-                        setCurrentView("map");
-                        if (overlayEvent) handleCloseOverlay();
-                    }}
+                    onClick={() => { setCurrentView("map"); if (overlayEvent) handleCloseOverlay(); }}
                     className={`px-3 py-1 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800
-                        ${
-                            currentView === "map"
+                        ${ currentView === "map"
                             ? "bg-white dark:bg-neutral-700 text-blue-600 dark:text-blue-400 shadow-sm"
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-300/50 dark:hover:bg-neutral-700/50"
                         }`}
-                >
-                    Map
-                </button>
+                > Map </button>
             </div>
             {currentView === "map" && (
                  <button
                     onClick={handleFetchAllDetails}
-                    disabled={isFetchingAllDetails || loading} // Disable if initial load is also happening
-                    title="Fetch details for all events to show on map"
-                    className={`p-1.5 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800
-                                bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300/70 dark:hover:bg-neutral-700/70 text-gray-700 dark:text-gray-300 shadow-sm
-                                disabled:opacity-50 disabled:cursor-not-allowed`}
+                    disabled={isFetchingAllDetails || loading}
+                    title="Fetch details for all events"
+                    className="p-1.5 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800 bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300/70 dark:hover:bg-neutral-700/70 text-gray-700 dark:text-gray-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    {isFetchingAllDetails ? (
-                        <RefreshCwIcon className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <RefreshCwIcon className="w-4 h-4" />
-                    )}
+                    {isFetchingAllDetails ? <RefreshCwIcon className="w-4 h-4 animate-spin" /> : <RefreshCwIcon className="w-4 h-4" />}
                 </button>
             )}
         </div>
-        
         <div className="flex-1"></div>
       </header>
 
       <main className="flex-grow overflow-y-auto bg-gray-100 dark:bg-black relative">
-        {loading && !isFetchingAllDetails && ( // Show initial loading only if not bulk fetching
-          <p className="p-4 text-center dark:text-gray-300 text-base">
+        {loading && !isFetchingAllDetails && (
+          <p className="p-4 text-center text-gray-700 dark:text-gray-300 text-base">
             Loading event summaries...
           </p>
         )}
@@ -355,7 +293,7 @@ function App() {
           </p>
         )}
 
-        {(!loading || events.length > 0) && !error && ( // Render if not initial loading OR if events exist (even during bulk fetch)
+        {(!loading || events.length > 0) && !error && (
           <>
             {currentView === "list" && (
               <EventList
@@ -371,7 +309,7 @@ function App() {
                   events={mapEvents}
                   mapCenter={mapCenter}
                   mapZoom={mapZoom}
-                  onMarkerClick={handleSelectEvent} // Pass handleSelectEvent here
+                  onMarkerClick={handleSelectEvent}
                   theme={theme}
                 />
               </div>

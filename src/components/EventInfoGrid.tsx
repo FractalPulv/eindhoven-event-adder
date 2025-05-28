@@ -37,7 +37,7 @@ const EventInfoGrid: React.FC<EventInfoGridProps> = (props) => {
       <InfoRowItem icon={<CalendarIcon />} mainText={props.dateMainText} subText={props.dateSubText} />
       <InfoRowItem icon={<ClockIcon />} mainText={props.timeMainText} subText={props.timeSubText} />
       <InfoRowItem icon={<PinIcon />} mainText={props.locationMainText} subText={props.locationSubText} />
-      <InfoRowItem icon={<EuroIcon />} mainText={props.priceMainText} />
+      <InfoRowItem icon={<EuroIcon />} mainText={props.priceMainText} subText="Price" className="text-indigo-600 dark:text-indigo-400" />
     </div>
   );
 };
