@@ -61,7 +61,7 @@ The first try was in Python with CustomTkinter. It worked, but...
 1.  **Need:**
     *   Node.js (npm/yarn/pnpm)
     *   Rust & Cargo
-    *   Tauri setup stuff (check their docs: [Tauri Prerequisites](https://tauri.app/v1/guides/getting-started/prerequisites))
+    *   Tauri setup stuff (check their docs: [Tauri Prerequisites](https://tauri.app/start/prerequisites/))
 
 2.  **Get the code:**
     ```zsh
