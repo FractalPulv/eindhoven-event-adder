@@ -1,243 +1,373 @@
 // File: src/components/EventDetailOverlay.tsx
-import React, { useEffect, useState } from 'react';
-import { EventData } from '../types';
-import MiniMap from './MiniMap';
-import { CalendarIcon, ClockIcon, PinIcon, EuroIcon, XMarkIcon } from './Icons';
+import React, { useEffect, useState, useRef } from "react";
+import { EventData } from "../types";
+import { CalendarIcon, ClockIcon, PinIcon, EuroIcon, XMarkIcon } from "./Icons"; // Assuming XMarkIcon is your close icon
+import EventHero from "./EventHero";
+import EventInfoGrid from "./EventInfoGrid";
+import EventContentSections from "./EventContentSections";
+import EventActionsFooter from "./EventActionsFooter";
 
 interface EventDetailOverlayProps {
   event: EventData | null;
   onClose: () => void;
   handleAddToCalendar: (event: EventData) => Promise<void>;
   openEventUrl: (url?: string) => Promise<void>;
-  theme: 'light' | 'dark';
+  theme: "light" | "dark";
 }
 
-const formatDate = (dateTimeStr?: string): string => {
-  if (!dateTimeStr) return 'N/A';
+// Updated formatDate to include weekday
+const formatDate = (dateTimeStr?: string): { main: string; sub?: string } => {
+  if (!dateTimeStr) return { main: "N/A" };
   try {
-    // Assuming dateTimeStr is like "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS"
-    const date = new Date(dateTimeStr.replace(' ', 'T')); 
-    if (isNaN(date.getTime())) return dateTimeStr;
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  } catch (e) { return dateTimeStr; }
+    const date = new Date(dateTimeStr.replace(" ", "T"));
+    if (isNaN(date.getTime())) return { main: dateTimeStr };
+    const mainDate = date.toLocaleDateString(undefined, {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    // We don't have a direct "This weekend" type of data, so sub will be omitted for date for now
+    return { main: mainDate };
+  } catch (e) {
+    return { main: dateTimeStr };
+  }
 };
 
 const formatTime = (dateTimeStr?: string): string => {
-  if (!dateTimeStr) return 'N/A';
+  if (!dateTimeStr) return "N/A";
   try {
-    const date = new Date(dateTimeStr.replace(' ', 'T'));
-    if (isNaN(date.getTime())) return 'N/A';
-    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: false });
-  } catch (e) { return 'N/A'; }
+    const date = new Date(dateTimeStr.replace(" ", "T"));
+    if (isNaN(date.getTime())) return "N/A";
+    return date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch (e) {
+    return "N/A";
+  }
 };
 
-const calculateDuration = (startStr?: string, endStr?: string): string | null => {
+const calculateDuration = (
+  startStr?: string,
+  endStr?: string
+): string | null => {
   if (!startStr || !endStr) return null;
   try {
-    const startDate = new Date(startStr.replace(' ', 'T'));
-    const endDate = new Date(endStr.replace(' ', 'T'));
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+    const startDate = new Date(startStr.replace(" ", "T"));
+    const endDate = new Date(endStr.replace(" ", "T"));
+    if (
+      isNaN(startDate.getTime()) ||
+      isNaN(endDate.getTime()) ||
+      endDate <= startDate
+    )
+      return null;
 
     let diffMs = endDate.getTime() - startDate.getTime();
-    if (diffMs < 0) return null; // Should not happen if data is correct
-
     const totalMinutes = Math.floor(diffMs / (1000 * 60));
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
 
-    if (hours === 0 && minutes === 0) return null; // No duration or invalid
-
-    let durationString = '(';
-    if (hours > 0) {
-      durationString += `${hours} hour${hours > 1 ? 's' : ''}`;
-    }
+    if (hours === 0 && minutes === 0) return null;
+    let durationString = "";
+    if (hours > 0) durationString += `${hours} hour${hours > 1 ? "s" : ""}`;
     if (minutes > 0) {
-      if (hours > 0) durationString += ' ';
-      durationString += `${minutes} min${minutes > 1 ? 's' : ''}`;
+      if (hours > 0) durationString += " ";
+      durationString += `${minutes} minute${minutes > 1 ? "s" : ""}`;
     }
-    durationString += ')';
-    return durationString;
-
+    return durationString ? `${durationString} duration` : null;
   } catch (e) {
-    console.error("Error calculating duration:", e);
     return null;
   }
 };
 
-const InfoItem: React.FC<{ icon: React.ReactNode; label: string; value?: string | React.ReactNode | null; className?: string }> = ({ icon, label, value, className }) => {
-  if (!value || value === 'N/A') return null;
+// New InfoItem component to match the design (icon, main text, optional sub-text)
+const InfoRowItem: React.FC<{
+  icon: React.ReactNode;
+  mainText: string | React.ReactNode;
+  subText?: string | React.ReactNode;
+  className?: string;
+}> = ({ icon, mainText, subText, className }) => {
+  if (!mainText || mainText === "N/A") return null;
   return (
     <div className={`flex items-start space-x-3 ${className}`}>
-      <div className="flex-shrink-0 w-5 h-5 text-blue-500 dark:text-blue-400 mt-1">{icon}</div>
+      <div className="flex-shrink-0 w-5 h-5 text-indigo-600 dark:text-indigo-400 mt-1 opacity-80">
+        {icon}
+      </div>
       <div className="flex-grow">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</p>
-        {typeof value === 'string' ? (
-            <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{value}</p>
-        ) : (
-            <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{value}</div>
+        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+          {mainText}
+        </p>
+        {subText && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">{subText}</p>
         )}
       </div>
     </div>
   );
 };
 
+const INITIAL_HERO_HEIGHT_DESKTOP = 320; // md:h-80
+const INITIAL_HERO_HEIGHT_TABLET = 288; // sm:h-72
+const INITIAL_HERO_HEIGHT_MOBILE = 240; // h-60
+const MIN_HERO_HEIGHT = 100; // Minimum height the hero can shrink to
+const SCROLL_RANGE_FOR_EFFECT = 150; // How many pixels of scroll to achieve full shrink/blur
 
-const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({ event: eventProp, onClose, handleAddToCalendar, openEventUrl, theme }) => {
+const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
+  event: eventProp,
+  onClose,
+  handleAddToCalendar,
+  openEventUrl,
+  theme,
+}) => {
   const [isVisible, setIsVisible] = useState(false);
+  const scrollableContentRef = useRef<HTMLDivElement>(null);
+
+  // Determine initial hero height based on window width (simplified)
+  const getInitialHeroHeight = () => {
+    if (typeof window !== "undefined") {
+      if (window.innerWidth >= 768) return INITIAL_HERO_HEIGHT_DESKTOP;
+      if (window.innerWidth >= 640) return INITIAL_HERO_HEIGHT_TABLET;
+    }
+    return INITIAL_HERO_HEIGHT_MOBILE;
+  };
+  const [currentHeroHeight, setCurrentHeroHeight] = useState(
+    getInitialHeroHeight()
+  );
+  // Optional: add state for hero blur
+  // const [heroBlur, setHeroBlur] = useState(0);
+
+  useEffect(() => {
+    // Recalculate initial hero height on window resize
+    const handleResize = () => {
+      setCurrentHeroHeight(getInitialHeroHeight());
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // --- PASTE getRelativeDateInfo HERE ---
+const getRelativeDateInfo = (dateStr?: string): string | undefined => {
+  if (!dateStr) return undefined;
+  try {
+    const eventDate = new Date(dateStr.replace(' ', 'T'));
+    if (isNaN(eventDate.getTime())) return undefined;
+
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const eventDateStart = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+
+    const diffTime = eventDateStart.getTime() - todayStart.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Tomorrow";
+    if (diffDays === -1) return "Yesterday";
+
+    const eventDayOfWeek = eventDate.getDay(); // 0 = Sunday, 6 = Saturday
+    if ((eventDayOfWeek === 0 || eventDayOfWeek === 6) && diffDays > 1 && diffDays < 7) {
+      return "This weekend";
+    }
+
+    if (diffDays > 1 && diffDays <= 7) return `In ${diffDays} days`;
+    
+    return undefined;
+  } catch (e) {
+    console.error("Error in getRelativeDateInfo:", e);
+    return undefined;
+  }
+};
+// --- END OF getRelativeDateInfo ---
 
   useEffect(() => {
     if (eventProp) {
       setIsVisible(true);
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
+      // Reset scroll position of content area when a new event is shown
+      if (scrollableContentRef.current) {
+        scrollableContentRef.current.scrollTop = 0;
+      }
+      setCurrentHeroHeight(getInitialHeroHeight()); // Reset hero height
+      // setHeroBlur(0); // Reset blur
     } else {
-      setIsVisible(false); 
-      document.body.style.overflow = '';
+      setIsVisible(false);
+      document.body.style.overflow = "";
     }
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [eventProp]);
 
   const handleClose = () => {
-    setIsVisible(false); 
-    setTimeout(() => { onClose(); }, 300); 
+    setIsVisible(false);
+    setTimeout(() => {
+      onClose();
+    }, 300);
   };
 
-  useEffect(() => { 
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && eventProp) { handleClose(); }
+      if (e.key === "Escape" && eventProp) {
+        handleClose();
+      }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [eventProp, onClose]);
 
-  if (!eventProp && !isVisible) { return null; }
-  
-  const currentEvent = eventProp;
+  // Parallax scroll effect for Hero
+  useEffect(() => {
+    const scrollNode = scrollableContentRef.current;
+    if (!scrollNode || !eventProp) return;
 
-  const displayDateStr = currentEvent?.start_datetime ? formatDate(currentEvent.start_datetime) : (currentEvent?.list_date || currentEvent?.date_time_summary);
-  
-  const startTimeStr = currentEvent?.start_datetime ? formatTime(currentEvent.start_datetime) : null;
-  const endTimeStr = currentEvent?.end_datetime ? formatTime(currentEvent.end_datetime) : null;
-  const durationStr = calculateDuration(currentEvent?.start_datetime, currentEvent?.end_datetime);
-  
-  let timeValue: string | React.ReactNode = 'Details not fully loaded';
-  if (startTimeStr) {
-    timeValue = startTimeStr;
-    if (endTimeStr) {
-      timeValue += ` - ${endTimeStr}`;
-    }
-    if (durationStr) {
-      // Display duration on a new line for clarity if both start and end times are present
-      timeValue = (
-        <>
-          {timeValue}
-          <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">{durationStr}</span>
-        </>
+    const handleScroll = () => {
+      const scrollTop = scrollNode.scrollTop;
+      const scrollRatio = Math.min(1, scrollTop / SCROLL_RANGE_FOR_EFFECT);
+      const initialH = getInitialHeroHeight();
+
+      const newHeight = Math.max(
+        MIN_HERO_HEIGHT,
+        initialH - (initialH - MIN_HERO_HEIGHT) * scrollRatio
       );
-    }
+      setCurrentHeroHeight(newHeight);
+
+      // Optional: Apply blur
+      // const newBlur = Math.min(5, 5 * scrollRatio); // Max blur 5px
+      // setHeroBlur(newBlur);
+    };
+
+    scrollNode.addEventListener("scroll", handleScroll);
+    return () => scrollNode.removeEventListener("scroll", handleScroll);
+  }, [eventProp]); // Re-attach if eventProp changes (though scrollNode itself shouldn't change often)
+
+  if (!eventProp && !isVisible) {
+    return null;
   }
 
+  const currentEvent = eventProp; // Use for rendering to avoid flicker during close animation
 
-  const displayLocationStr = currentEvent?.address || currentEvent?.specific_location_name || currentEvent?.list_specific_location;
-  const displayPriceStr = currentEvent?.price || currentEvent?.list_price;
-  const displayDescriptionStr = currentEvent?.full_description || currentEvent?.short_description || 'No description available.';
-  const hasCoordinates = typeof currentEvent?.latitude === 'number' && typeof currentEvent?.longitude === 'number';
+  // Data formatting for sub-components
+  const { main: dateMainText } = currentEvent?.start_datetime
+    ? formatDate(currentEvent.start_datetime)
+    : {
+        main:
+          currentEvent?.list_date ||
+          currentEvent?.date_time_summary ||
+          "Date N/A",
+      };
+  const dateSubTextRelative = getRelativeDateInfo(currentEvent?.start_datetime);
 
+  const startTimeStr = currentEvent?.start_datetime
+    ? formatTime(currentEvent.start_datetime)
+    : null;
+  const endTimeStr = currentEvent?.end_datetime
+    ? formatTime(currentEvent.end_datetime)
+    : null;
+  const durationSubText = calculateDuration(
+    currentEvent?.start_datetime,
+    currentEvent?.end_datetime
+  );
+  const timeMainText = startTimeStr
+    ? `${startTimeStr}${endTimeStr ? ` - ${endTimeStr}` : ""}`
+    : "Time N/A";
+
+  let locationMainText =
+    currentEvent?.specific_location_name ||
+    currentEvent?.list_specific_location ||
+    "Location N/A";
+  let locationSubText = currentEvent?.address;
+  if (
+    locationSubText &&
+    locationSubText.includes(locationMainText) &&
+    locationSubText !== locationMainText
+  ) {
+    locationSubText = locationSubText
+      .replace(locationMainText, "")
+      .replace(/^,\s*/, "");
+  } else if (locationSubText === locationMainText) {
+    locationSubText = undefined;
+  }
+  if (locationMainText === "Location N/A" && locationSubText) {
+    locationMainText = locationSubText;
+    locationSubText = undefined;
+  }
+
+  const priceMainText =
+    currentEvent?.price || currentEvent?.list_price || "Price N/A";
+  const descriptionMainText =
+    currentEvent?.full_description ||
+    currentEvent?.short_description ||
+    "No description available.";
+
+  const eventLocationForMap =
+    currentEvent?.latitude && currentEvent?.longitude && currentEvent?.id
+      ? {
+          lat: currentEvent.latitude,
+          lon: currentEvent.longitude,
+          id: currentEvent.id,
+        }
+      : undefined;
 
   return (
-    <div 
-      className={`fixed inset-0 z-40 flex items-center justify-center p-4 sm:p-6
-                  ${isVisible ? 'pointer-events-auto' : 'pointer-events-none'}`}
+    <div
+      className={`fixed inset-0 z-40 flex items-center justify-center
+                  ${isVisible ? "pointer-events-auto" : "pointer-events-none"}`}
       onClick={handleClose}
     >
-      <div 
-        className={`absolute inset-0 bg-black/60 dark:bg-black/75 backdrop-blur-md
+      <div
+        className={`absolute inset-0 bg-black/60 dark:bg-black/75 backdrop-blur-lg
                     transition-opacity duration-300 ease-in-out
-                    ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+                    ${isVisible ? "opacity-100" : "opacity-0"}`}
       ></div>
 
-      <div 
-        className={`relative bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden
+      <div
+        className={`relative bg-gray-50 dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden
                     transition-all duration-300 ease-in-out
-                    ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
+                    ${
+                      isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
+                    }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 dark:border-slate-700">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-100 truncate pr-8">
-            {currentEvent?.title || 'Event Details'}
-          </h2>
-          <button 
-            onClick={handleClose} 
-            className="p-1.5 rounded-full text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-slate-700 transition-colors"
-            aria-label="Close event details"
-          >
-            <XMarkIcon className="w-5 h-5" />
-          </button>
+        <EventHero
+          title={currentEvent?.title}
+          imageUrl={currentEvent?.image_url}
+          shortDescription={currentEvent?.short_description}
+          onClose={handleClose}
+          currentHeroHeight={currentHeroHeight}
+          // heroStyle={{ filter: `blur(${heroBlur}px)` }} // If using blur
+        />
+
+        <div
+          ref={scrollableContentRef}
+          className="overflow-y-auto flex-grow p-5 sm:p-6 space-y-6 bg-white dark:bg-slate-800"
+        >
+          <EventInfoGrid
+            dateMainText={dateMainText}
+            dateSubText={dateSubTextRelative}
+            timeMainText={timeMainText}
+            timeSubText={durationSubText}
+            locationMainText={locationMainText}
+            locationSubText={locationSubText}
+            priceMainText={priceMainText}
+          />
+          <EventContentSections
+            description={descriptionMainText}
+            eventLocation={eventLocationForMap}
+            theme={theme}
+          />
         </div>
 
-        <div className="overflow-y-auto flex-grow p-5 sm:p-6 space-y-5 sm:space-y-6">
-          {currentEvent?.image_url && (
-            <div className="aspect-[16/9] sm:aspect-[2/1] w-full overflow-hidden rounded-lg shadow-md mb-4">
-              <img 
-                src={currentEvent.image_url} 
-                alt={currentEvent.title} 
-                className="w-full h-full object-cover"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            </div>
-          )}
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-            <InfoItem icon={<CalendarIcon />} label="Date" value={displayDateStr} />
-            <InfoItem icon={<ClockIcon />} label="Time" value={timeValue} />
-            {displayLocationStr && <InfoItem icon={<PinIcon />} label="Location" value={displayLocationStr} className="sm:col-span-2"/>}
-            {displayPriceStr && <InfoItem icon={<EuroIcon />} label="Price" value={displayPriceStr} />}
-          </div>
-
-          {displayDescriptionStr && displayDescriptionStr !== 'No description available.' && (
-            <div className="pt-1">
-              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Description</h4>
-              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-                {displayDescriptionStr}
-              </p>
-            </div>
-          )}
-
-          {hasCoordinates && currentEvent && (
-            <div className="pt-1">
-              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Location Map</h4>
-              <MiniMap 
-                key={`${currentEvent.id}-overlaymap-${theme}`}
-                center={[currentEvent.latitude!, currentEvent.longitude!]} 
-                zoom={15}
-                className="h-56 sm:h-64 rounded-lg shadow-sm" // Slightly softer shadow for map
-                theme={theme}
-              />
-            </div>
-          )}
-        </div>
-        
-        <div className="p-4 sm:p-5 border-t border-gray-200 dark:border-slate-700">
-          <div className="flex flex-col sm:flex-row space-y-2.5 sm:space-y-0 sm:space-x-3">
-            <button 
-              onClick={() => currentEvent && handleAddToCalendar(currentEvent)}
-              disabled={!currentEvent?.start_datetime}
-              className="flex-1 py-2.5 px-5 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              Add to Calendar
-            </button>
-            {currentEvent?.full_url && (
-              <button 
-                onClick={() => currentEvent && openEventUrl(currentEvent.full_url)}
-                className="flex-1 py-2.5 px-5 rounded-lg text-sm font-semibold bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800"
-              >
-                More Info
-              </button>
-            )}
-          </div>
-        </div>
+        <EventActionsFooter
+          currentEvent={currentEvent}
+          handleAddToCalendar={handleAddToCalendar}
+          openEventUrl={openEventUrl}
+        />
       </div>
     </div>
   );
 };
 
+// Re-exporting these as they were in the original for completeness,
+// but ideally they'd be in dateUtils.ts and imported.
+export { formatDate, formatTime, calculateDuration };
 export default EventDetailOverlay;
