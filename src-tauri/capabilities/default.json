@@ -6,7 +6,9 @@
   "permissions": [
     "shell:allow-open",
     "shell:default",
-  
+    "dialog:allow-save",
+    "dialog:default",
+    "fs:allow-write-text-file",
     "core:default",
     {
       "identifier": "fs:scope",

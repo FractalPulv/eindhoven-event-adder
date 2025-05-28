@@ -47,25 +47,36 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
 
   return (
     <div id={mapId} className={`w-full rounded-lg overflow-hidden shadow-md ${className}`}> {/* Ensure className for height (e.g. h-48) is passed */}
-      <MapContainer 
-        center={mapCenter} 
-        zoom={zoom} 
-        style={{ height: "100%", width: "100%" }} 
-        scrollWheelZoom={false} 
-        dragging={false} 
-        doubleClickZoom={false} 
-        touchZoom={false}
-        attributionControl={false} // Smaller map, less clutter
-      >
-        <ChangeViewMini center={mapCenter} zoom={zoom} />
-        <TileLayer
-          url={tileUrl}
-          attribution={tileAttribution}
-          subdomains='abcd'
-          maxZoom={19}
-        />
-        <Marker position={mapCenter} />
-      </MapContainer>
+    <MapContainer
+      center={mapCenter}
+      zoom={zoom}
+      style={{ height: "100%", width: "100%" }}
+      scrollWheelZoom={false}
+      dragging={false}
+      doubleClickZoom={false}
+      touchZoom={false}
+      attributionControl={false} // Smaller map, less clutter
+    >
+      <ChangeViewMini center={mapCenter} zoom={zoom} />
+      <TileLayer
+        url={tileUrl}
+        attribution={tileAttribution}
+        subdomains='abcd'
+        maxZoom={19}
+      />
+      <Marker
+        position={mapCenter}
+        icon={L.icon({ // Define the custom icon here
+        iconUrl: iconUrl, // Use the imported iconUrl
+        iconRetinaUrl: iconRetinaUrl, // Use the imported iconRetinaUrl for high-res displays
+        shadowUrl: shadowUrl, // Use the imported shadowUrl
+        iconSize: [25, 41], // Size of the icon
+        iconAnchor: [12, 41], // Point of the icon which will correspond to marker's location
+        popupAnchor: [1, -34], // Point from which the popup should open relative to the iconAnchor
+        shadowSize: [41, 41] // Size of the shadow
+        })}
+      />
+    </MapContainer>
     </div>
   );
 };
