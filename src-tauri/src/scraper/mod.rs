@@ -1,11 +1,11 @@
 // File: src-tauri/src/scraper/mod.rs
 
 // Declare the sub-modules within the `scraper` module
-mod utils;
 mod parsers;
+mod utils;
 
 // Re-export the functions that lib.rs (and thus Tauri commands) will call
-pub use parsers::{fetch_event_list_summaries, fetch_event_details};
+pub use parsers::{fetch_event_details, fetch_event_list_summaries};
 
 // Optionally, re-export the internal testing function if you want to call it from outside
 // for some reason, though it's typically not needed for Tauri commands.

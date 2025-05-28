@@ -27,7 +27,7 @@ const EventContentSections: React.FC<EventContentSectionsProps> = ({ description
           <MiniMap 
             key={`${eventLocation.id}-overlaymap-${theme}`}
             center={[eventLocation.lat, eventLocation.lon]} 
-            zoom={15}
+            zoom={13}
             className="h-56 sm:h-64 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700"
             theme={theme}
           />

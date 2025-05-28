@@ -4,9 +4,28 @@
   "description": "Capability for the main window",
   "windows": ["main"],
   "permissions": [
-    "core:default", {
+    "shell:allow-open",
+    "shell:default",
+  
+    "core:default",
+    {
       "identifier": "fs:scope",
       "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+    },
+    "opener:allow-default-urls",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://www.thisiseindhoven.com/en/events/*"
+        },
+        {
+          "url": "https://shop.eventix.io/*"
+        },
+        {
+          "url": "https://linktr.ee/*"
+        }
+      ]
     }
   ]
 }
