@@ -2,27 +2,20 @@
 import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
-// Removed 'leaflet/dist/leaflet.css' import, now in main.tsx
 
-// Fix Leaflet's default icon path issue (already present and correct)
-import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
-import iconUrl from 'leaflet/dist/images/marker-icon.png';
-import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
-
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl,
-  iconUrl,
-  shadowUrl,
-});
+// REMOVE these imports and the L.Icon.Default.mergeOptions block
+// import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
+// import iconUrl from 'leaflet/dist/images/marker-icon.png';
+// import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+// L.Icon.Default.mergeOptions({ ... }); // REMOVE THIS
 
 interface MiniMapProps {
   center: LatLngExpression;
   zoom?: number;
   className?: string;
-  theme: 'light' | 'dark'; // Add theme prop
+  theme: 'light' | 'dark';
 }
 
-// Component to smoothly update map view when center prop changes
 const ChangeViewMini: React.FC<{ center: LatLngExpression; zoom: number }> = ({ center, zoom }) => {
   const map = useMap();
   useEffect(() => {
@@ -42,11 +35,10 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
   
   const tileAttribution = '© <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
 
-  // Unique ID for the map container to prevent issues if multiple minimaps are on page, though key in EventListItem should handle this for React's VDOM
   const mapId = `minimap-${React.useId()}`; 
 
   return (
-    <div id={mapId} className={`w-full rounded-lg overflow-hidden shadow-md ${className}`}> {/* Ensure className for height (e.g. h-48) is passed */}
+    <div id={mapId} className={`w-full rounded-lg overflow-hidden shadow-md ${className}`}>
     <MapContainer
       center={mapCenter}
       zoom={zoom}
@@ -55,7 +47,7 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
       dragging={false}
       doubleClickZoom={false}
       touchZoom={false}
-      attributionControl={false} // Smaller map, less clutter
+      attributionControl={false}
     >
       <ChangeViewMini center={mapCenter} zoom={zoom} />
       <TileLayer
@@ -64,18 +56,7 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
         subdomains='abcd'
         maxZoom={19}
       />
-      <Marker
-        position={mapCenter}
-        icon={L.icon({ // Define the custom icon here
-        iconUrl: iconUrl, // Use the imported iconUrl
-        iconRetinaUrl: iconRetinaUrl, // Use the imported iconRetinaUrl for high-res displays
-        shadowUrl: shadowUrl, // Use the imported shadowUrl
-        iconSize: [25, 41], // Size of the icon
-        iconAnchor: [12, 41], // Point of the icon which will correspond to marker's location
-        popupAnchor: [1, -34], // Point from which the popup should open relative to the iconAnchor
-        shadowSize: [41, 41] // Size of the shadow
-        })}
-      />
+      <Marker position={mapCenter} /> {/* It will now use the globally configured default icon */}
     </MapContainer>
     </div>
   );
