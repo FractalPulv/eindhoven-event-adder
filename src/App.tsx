@@ -26,7 +26,7 @@ function App() {
   const [events, setEvents] = useState<EventData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
+  // const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null); // Keep this if needed for other logic, but overlay uses overlayEvent
   const [mapCenter, setMapCenter] = useState<LatLngExpression>(
     EindhovenCentraalStation
   );
@@ -82,14 +82,6 @@ function App() {
 
   const handleSelectEvent = useCallback(
     async (eventData: EventData) => {
-      // Renamed param for clarity
-      // If this event is already the one in the overlay, do nothing or maybe close it (optional)
-      // if (overlayEvent && overlayEvent.id === eventData.id) {
-      //   // setOverlayEvent(null); // Option to toggle close
-      //   return;
-      // }
-
-      // Set for overlay immediately, to show loading state if needed
       setOverlayEvent(eventData);
 
       if (eventData.latitude && eventData.longitude) {
@@ -100,7 +92,6 @@ function App() {
         setMapZoom(13);
       }
 
-      // Fetch details if not already fetched or currently loading
       if (!eventData.isDetailed && eventData.id !== loadingDetailsFor) {
         setLoadingDetailsFor(eventData.id);
         try {
@@ -112,7 +103,6 @@ function App() {
             { eventSummary: eventData }
           );
 
-          // Update the main events array (for grid item persistence)
           setEvents((prevEvents) =>
             prevEvents.map((e) =>
               e.id === detailedEvent.id
@@ -120,7 +110,6 @@ function App() {
                 : e
             )
           );
-          // Update the event in the overlay with full details
           setOverlayEvent({ ...detailedEvent, isDetailed: true });
           console.log(
             `Successfully fetched details for overlay: ${detailedEvent.title}`
@@ -130,19 +119,15 @@ function App() {
             `Failed to fetch details for event ${eventData.id} for overlay:`,
             e
           );
-          // If fetch fails, overlay might show summary or an error. Current event in overlay is still the summary.
-          // Optionally, close overlay or show error message within it.
-          // For now, we keep the summary in overlayEvent and clear loading.
         } finally {
           setLoadingDetailsFor(null);
         }
       } else if (eventData.isDetailed) {
-        // If already detailed, ensure overlayEvent has the detailed version
         setOverlayEvent(eventData);
       }
     },
-    [currentView, loadingDetailsFor /* overlayEvent */]
-  ); // Removed overlayEvent from deps to prevent re-triggering on close
+    [currentView, loadingDetailsFor]
+  );
 
   const handleCloseOverlay = useCallback(() => {
     setOverlayEvent(null);
@@ -150,13 +135,11 @@ function App() {
 
   const handleAddToCalendar = useCallback(
     async (event: EventData) => {
-      // This logic can remain largely the same, but it now operates on the event from the overlay
       if (!event) return;
       let eventForIcs = event;
       if (!event.isDetailed) {
-        // Should ideally always be detailed if coming from overlay, but good check
         alert("Fetching event details for calendar. Please wait.");
-        setLoadingDetailsFor(event.id); // This state is now less directly tied to UI, but ok for logic
+        setLoadingDetailsFor(event.id);
         try {
           eventForIcs = await invoke<EventData>(
             "fetch_specific_event_details_rust",
@@ -167,7 +150,6 @@ function App() {
               e.id === eventForIcs.id ? { ...eventForIcs, isDetailed: true } : e
             )
           );
-          // If the overlay is somehow showing a summary version, update it
           if (overlayEvent?.id === eventForIcs.id) {
             setOverlayEvent({ ...eventForIcs, isDetailed: true });
           }
@@ -206,7 +188,7 @@ function App() {
         console.error("ICS Error:", e);
       }
     },
-    [selectedEvent]
+    [overlayEvent] // Changed from selectedEvent
   );
 
   const openEventUrlInBrowser = useCallback(async (url?: string) => {
@@ -223,46 +205,54 @@ function App() {
   const mapEvents = events.filter((e) => e.latitude && e.longitude);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 dark:bg-slate-900 text-gray-900 dark:text-gray-100 antialiased">
+    <div className="flex flex-col h-screen bg-gray-100 dark:bg-black text-gray-900 dark:text-gray-100 antialiased">
       <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
 
-      <header className="p-3 bg-white dark:bg-slate-800/90 backdrop-blur-sm flex justify-between items-center shadow-lg sticky top-0 z-30 border-b border-gray-200 dark:border-slate-700/70">
-        <h1 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-gray-200">
-          Eindhoven Event Viewer
-        </h1>
-        <div className="flex space-x-1.5 sm:space-x-2">
-          <button
-            onClick={() => {
-              setCurrentView("list");
-              if (overlayEvent) handleCloseOverlay();
-            }} // Close overlay on view switch
-            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium transition-all duration-200 text-xs sm:text-sm shadow-sm hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800
-                        ${
-                          currentView === "list"
-                            ? "bg-blue-600 text-white focus-visible:ring-blue-400"
-                            : "bg-gray-200 hover:bg-gray-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-gray-200 focus-visible:ring-gray-400"
-                        }`}
-          >
-            List View
-          </button>
-          <button
-            onClick={() => {
-              setCurrentView("map");
-              if (overlayEvent) handleCloseOverlay();
-            }} // Close overlay on view switch
-            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium transition-all duration-200 text-xs sm:text-sm shadow-sm hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800
-                        ${
-                          currentView === "map"
-                            ? "bg-blue-600 text-white focus-visible:ring-blue-400"
-                            : "bg-gray-200 hover:bg-gray-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-gray-200 focus-visible:ring-gray-400"
-                        }`}
-          >
-            Map View
-          </button>
+      <header className="p-3 bg-white dark:bg-neutral-950/90 backdrop-blur-sm flex items-center shadow-lg sticky top-0 z-30 border-b border-gray-200 dark:border-neutral-800/70">
+        {/* Left: Title */}
+        <div className="flex-1">
+            <h1 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-gray-200">
+                Eindhoven Event Viewer
+            </h1>
         </div>
+        {/* Center: View Toggle (Segmented Control) */}
+        <div className="flex-none">
+            <div className="flex space-x-1 bg-gray-200 dark:bg-neutral-800 p-0.5 rounded-lg shadow-sm">
+                <button
+                    onClick={() => {
+                        setCurrentView("list");
+                        if (overlayEvent) handleCloseOverlay();
+                    }}
+                    className={`px-3 py-1 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800
+                        ${
+                            currentView === "list"
+                            ? "bg-white dark:bg-neutral-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-300/50 dark:hover:bg-neutral-700/50"
+                        }`}
+                >
+                    List
+                </button>
+                <button
+                    onClick={() => {
+                        setCurrentView("map");
+                        if (overlayEvent) handleCloseOverlay();
+                    }}
+                    className={`px-3 py-1 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800
+                        ${
+                            currentView === "map"
+                            ? "bg-white dark:bg-neutral-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-300/50 dark:hover:bg-neutral-700/50"
+                        }`}
+                >
+                    Map
+                </button>
+            </div>
+        </div>
+        {/* Right: Spacer (to balance title) */}
+        <div className="flex-1"></div>
       </header>
 
-      <main className="flex-grow overflow-y-auto bg-gray-100 dark:bg-slate-900 relative">
+      <main className="flex-grow overflow-y-auto bg-gray-100 dark:bg-black relative">
         {loading && (
           <p className="p-4 text-center dark:text-gray-300 text-base">
             Loading event summaries...
@@ -281,7 +271,7 @@ function App() {
                 events={events}
                 onSelectEvent={handleSelectEvent}
                 loadingDetailsFor={loadingDetailsFor}
-                eventInOverlayId={overlayEvent?.id} // Pass the ID of the event in the overlay
+                eventInOverlayId={overlayEvent?.id}
               />
             )}
             {currentView === "map" && (
@@ -290,7 +280,7 @@ function App() {
                   events={mapEvents}
                   mapCenter={mapCenter}
                   mapZoom={mapZoom}
-                  onMarkerClick={handleSelectEvent} // This will now open the overlay
+                  onMarkerClick={handleSelectEvent}
                   handleAddToCalendar={handleAddToCalendar}
                   openEventUrl={openEventUrlInBrowser}
                   theme={theme}
@@ -301,21 +291,13 @@ function App() {
         )}
       </main>
 
-      {/* Event Detail Overlay */}
       <EventDetailOverlay
         event={overlayEvent}
         onClose={handleCloseOverlay}
         handleAddToCalendar={handleAddToCalendar}
-        openEventUrl={openEventUrlInBrowser} // Passed as openEventUrl
+        openEventUrl={openEventUrlInBrowser}
         theme={theme}
       />
-
-      {/* Global loading indicator can be removed or simplified as overlay has its own indicators */}
-      {/* {loadingDetailsFor && !overlayEvent?.isDetailed && (
-        <div className="fixed bottom-4 right-4 bg-blue-500/90 dark:bg-blue-600/90 backdrop-blur-sm text-white p-2.5 rounded-lg shadow-xl z-50 text-xs font-medium">
-          Loading details...
-        </div>
-      )} */}
     </div>
   );
 }

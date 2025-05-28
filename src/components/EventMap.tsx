@@ -1,10 +1,8 @@
 import React from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
-// Removed 'leaflet/dist/leaflet.css' import, now in main.tsx
 import { EventData } from '../types';
 
-// Fix Leaflet's default icon path issue (already present and correct)
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
@@ -27,7 +25,7 @@ interface EventMapProps {
 
 function ChangeView({ center, zoom }: { center: LatLngExpression; zoom: number }) {
   const map = useMap();
-  React.useEffect(() => { // Added useEffect to prevent multiple setView calls during render
+  React.useEffect(() => {
     map.setView(center, zoom);
   }, [map, center, zoom]);
   return null;
@@ -37,35 +35,35 @@ const EventMap: React.FC<EventMapProps> = ({ events, mapCenter, mapZoom, onMarke
   
   const tileUrl = theme === 'dark' 
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
-    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'; // Voyager is a good light alternative to Positron
+    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
   
   const tileAttribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
 
   return (
-    // Removed dark-map-tiles class, using specific dark tiles now
     <div id="event-map" className="flex-grow h-full" style={{ minHeight: '300px' }}>
       <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: "100%", width: "100%" }}>
         <ChangeView center={mapCenter} zoom={mapZoom} />
         <TileLayer
           url={tileUrl}
           attribution={tileAttribution}
-          subdomains={theme === 'dark' ? 'abcd' : 'abcd'} // CartoDB often uses abcd subdomains
+          subdomains={'abcd'}
           maxZoom={19}
         />
-        {events.filter(e => e.latitude && e.longitude).map((event) => (
+        {/* Removed redundant filter for latitude/longitude as 'events' prop is already filtered */}
+        {events.map((event) => (
           <Marker 
             key={event.id} 
             position={[event.latitude!, event.longitude!]} 
             eventHandlers={{ click: () => onMarkerClick(event) }}
           >
             <Popup>
-              <div className="w-64 p-3 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-transparent dark:border-slate-700">
+              <div className="w-64 p-3 bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-transparent dark:border-neutral-700"> {/* Updated dark bg */}
                 <h4 className="font-semibold text-base mb-2 text-gray-800 dark:text-white truncate">{event.title}</h4>
                 {event.image_url && 
                   <img 
                     src={event.image_url} 
                     alt={event.title} 
-                    className="mb-2 rounded-md w-full h-28 object-cover" // Slightly taller image
+                    className="mb-2 rounded-md w-full h-28 object-cover"
                     onError={(e) => (e.currentTarget.style.display = 'none')}
                   />}
                 

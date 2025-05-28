@@ -19,17 +19,17 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
-    background-color: #1e293b; /* Tailwind slate-800, ensuring consistency */
+    background-color: #000000; /* Updated to black */
   }
 }
 
 /* Apply dark mode background if html.dark exists */
 html.dark :root {
   color: #f6f6f6;
-  background-color: #1e293b; /* Tailwind slate-800 */
+  background-color: #000000; /* Updated to black */
 }
 html.dark {
-  background-color: #1e293b; /* Tailwind slate-800 */
+  background-color: #000000; /* Updated to black */
   color: #f6f6f6;
 }
 html {

@@ -1,12 +1,12 @@
 // File: src/components/EventDetailOverlay.tsx
 import React, { useEffect, useState, useRef } from "react";
 import { EventData } from "../types";
-import { CalendarIcon, ClockIcon, PinIcon, EuroIcon, XMarkIcon } from "./Icons"; // Assuming XMarkIcon is your close icon
+import { XMarkIcon } from "./Icons";
 import EventHero from "./EventHero";
 import EventInfoGrid from "./EventInfoGrid";
 import EventContentSections from "./EventContentSections";
 import EventActionsFooter from "./EventActionsFooter";
-import { getRelativeDateInfo } from "../utils/dateUtils"; // Assuming this utility function is defined in dateUtils.ts
+import { getRelativeDateInfo } from "../utils/dateUtils";
 
 interface EventDetailOverlayProps {
   event: EventData | null;
@@ -16,7 +16,6 @@ interface EventDetailOverlayProps {
   theme: "light" | "dark";
 }
 
-// Updated formatDate to include weekday
 const formatDate = (dateTimeStr?: string): { main: string; sub?: string } => {
   if (!dateTimeStr) return { main: "N/A" };
   try {
@@ -28,7 +27,6 @@ const formatDate = (dateTimeStr?: string): { main: string; sub?: string } => {
       month: "long",
       day: "numeric",
     });
-    // We don't have a direct "This weekend" type of data, so sub will be omitted for date for now
     return { main: mainDate };
   } catch (e) {
     return { main: dateTimeStr };
@@ -83,36 +81,11 @@ const calculateDuration = (
   }
 };
 
-// New InfoItem component to match the design (icon, main text, optional sub-text)
-const InfoRowItem: React.FC<{
-  icon: React.ReactNode;
-  mainText: string | React.ReactNode;
-  subText?: string | React.ReactNode;
-  className?: string;
-}> = ({ icon, mainText, subText, className }) => {
-  if (!mainText || mainText === "N/A") return null;
-  return (
-    <div className={`flex items-start space-x-3 ${className}`}>
-      <div className="flex-shrink-0 w-5 h-5 text-indigo-600 dark:text-indigo-400 mt-1 opacity-80">
-        {icon}
-      </div>
-      <div className="flex-grow">
-        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
-          {mainText}
-        </p>
-        {subText && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">{subText}</p>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const INITIAL_HERO_HEIGHT_DESKTOP = 320; // md:h-80
-const INITIAL_HERO_HEIGHT_TABLET = 288; // sm:h-72
-const INITIAL_HERO_HEIGHT_MOBILE = 240; // h-60
-const MIN_HERO_HEIGHT = 100; // Minimum height the hero can shrink to
-const SCROLL_RANGE_FOR_EFFECT = 150; // How many pixels of scroll to achieve full shrink/blur
+const INITIAL_HERO_HEIGHT_DESKTOP = 320;
+const INITIAL_HERO_HEIGHT_TABLET = 288;
+const INITIAL_HERO_HEIGHT_MOBILE = 240;
+const MIN_HERO_HEIGHT = 100;
+const SCROLL_RANGE_FOR_EFFECT = 150;
 
 const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
   event: eventProp,
@@ -124,7 +97,6 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
   const [isVisible, setIsVisible] = useState(false);
   const scrollableContentRef = useRef<HTMLDivElement>(null);
 
-  // Determine initial hero height based on window width (simplified)
   const getInitialHeroHeight = () => {
     if (typeof window !== "undefined") {
       if (window.innerWidth >= 768) return INITIAL_HERO_HEIGHT_DESKTOP;
@@ -135,11 +107,8 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
   const [currentHeroHeight, setCurrentHeroHeight] = useState(
     getInitialHeroHeight()
   );
-  // Optional: add state for hero blur
-  // const [heroBlur, setHeroBlur] = useState(0);
 
   useEffect(() => {
-    // Recalculate initial hero height on window resize
     const handleResize = () => {
       setCurrentHeroHeight(getInitialHeroHeight());
     };
@@ -147,19 +116,14 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-
-// --- END OF getRelativeDateInfo ---
-
   useEffect(() => {
     if (eventProp) {
       setIsVisible(true);
       document.body.style.overflow = "hidden";
-      // Reset scroll position of content area when a new event is shown
       if (scrollableContentRef.current) {
         scrollableContentRef.current.scrollTop = 0;
       }
-      setCurrentHeroHeight(getInitialHeroHeight()); // Reset hero height
-      // setHeroBlur(0); // Reset blur
+      setCurrentHeroHeight(getInitialHeroHeight());
     } else {
       setIsVisible(false);
       document.body.style.overflow = "";
@@ -186,7 +150,6 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [eventProp, onClose]);
 
-  // Parallax scroll effect for Hero
   useEffect(() => {
     const scrollNode = scrollableContentRef.current;
     if (!scrollNode || !eventProp) return;
@@ -201,23 +164,18 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
         initialH - (initialH - MIN_HERO_HEIGHT) * scrollRatio
       );
       setCurrentHeroHeight(newHeight);
-
-      // Optional: Apply blur
-      // const newBlur = Math.min(5, 5 * scrollRatio); // Max blur 5px
-      // setHeroBlur(newBlur);
     };
 
     scrollNode.addEventListener("scroll", handleScroll);
     return () => scrollNode.removeEventListener("scroll", handleScroll);
-  }, [eventProp]); // Re-attach if eventProp changes (though scrollNode itself shouldn't change often)
+  }, [eventProp]);
 
   if (!eventProp && !isVisible) {
     return null;
   }
 
-  const currentEvent = eventProp; // Use for rendering to avoid flicker during close animation
+  const currentEvent = eventProp;
 
-  // Data formatting for sub-components
   const { main: dateMainText } = currentEvent?.start_datetime
     ? formatDate(currentEvent.start_datetime)
     : {
@@ -286,13 +244,13 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
       onClick={handleClose}
     >
       <div
-        className={`absolute inset-0 bg-black/60 dark:bg-black/75 backdrop-blur-lg
+        className={`absolute inset-0 bg-black/70 dark:bg-black/80 backdrop-blur-md 
                     transition-opacity duration-300 ease-in-out
                     ${isVisible ? "opacity-100" : "opacity-0"}`}
       ></div>
 
       <div
-        className={`relative bg-gray-50 dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden
+        className={`relative bg-gray-50 dark:bg-neutral-950 rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden
                     transition-all duration-300 ease-in-out
                     ${
                       isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
@@ -305,12 +263,11 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
           shortDescription={currentEvent?.short_description}
           onClose={handleClose}
           currentHeroHeight={currentHeroHeight}
-          // heroStyle={{ filter: `blur(${heroBlur}px)` }} // If using blur
         />
 
         <div
           ref={scrollableContentRef}
-          className="overflow-y-auto flex-grow p-5 sm:p-6 space-y-6 bg-white dark:bg-slate-800"
+          className="overflow-y-auto flex-grow p-5 sm:p-6 space-y-6 bg-white dark:bg-neutral-900" // Updated dark bg
         >
           <EventInfoGrid
             dateMainText={dateMainText}
@@ -331,14 +288,12 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
          <EventActionsFooter 
           currentEvent={currentEvent}
           handleAddToCalendar={handleAddToCalendar}
-          openExternalUrl={openEventUrl} // Pass the correct prop name
+          openExternalUrl={openEventUrl}
         />
       </div>
     </div>
   );
 };
 
-// Re-exporting these as they were in the original for completeness,
-// but ideally they'd be in dateUtils.ts and imported.
 export { formatDate, formatTime, calculateDuration };
 export default EventDetailOverlay;

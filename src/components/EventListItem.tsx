@@ -1,17 +1,13 @@
 // File: src/components/EventListItem.tsx
 import React from "react";
 import { EventData } from "../types";
-import { CalendarIcon, PinIcon, EuroIcon } from "./Icons"; // ClockIcon might not be needed here anymore if time is part of date line
+import { CalendarIcon, PinIcon, EuroIcon } from "./Icons";
 import Tilt from 'react-parallax-tilt';
 interface EventListItemProps {
   event: EventData;
   onSelectEvent: (event: EventData) => void;
-  // isSelected is now used to highlight the item in the grid if it's the one in the overlay
-  // However, the actual "selected" state for detail view is managed by the overlay.
-  // We might not even need 'isSelected' here anymore if the overlay is the only detail view.
-  // Let's keep it for now for a subtle visual cue in the grid.
   isSelectedInGrid?: boolean;
-  isLoadingDetails?: boolean; // If this specific item is being fetched for the overlay
+  isLoadingDetails?: boolean;
 }
 
 const formatDate = (dateTimeStr?: string): string => {
@@ -44,7 +40,6 @@ const formatTime = (dateTimeStr?: string): string => {
   }
 };
 
-// Simplified InfoRow for grid item
 const GridInfoRow: React.FC<{
   icon: React.ReactNode;
   text?: string | null;
@@ -76,7 +71,6 @@ const EventListItem: React.FC<EventListItemProps> = ({
   isSelectedInGrid,
   isLoadingDetails,
 }) => {
-  // For the grid item, always try to show the most precise date/time if available (isDetailed = true)
   const itemDate =
     event.isDetailed && event.start_datetime
       ? formatDate(event.start_datetime)
@@ -86,7 +80,7 @@ const EventListItem: React.FC<EventListItemProps> = ({
     event.isDetailed && event.start_datetime
       ? formatTime(event.start_datetime) +
         (event.end_datetime ? ` - ${formatTime(event.end_datetime)}` : "")
-      : null; // Don't show "Click to load" here, overlay handles that.
+      : null;
 
   const displayDateTimeOnCard =
     itemDate && itemTime
@@ -100,7 +94,7 @@ const EventListItem: React.FC<EventListItemProps> = ({
     event.specific_location_name ||
     (event.isDetailed && event.address
       ? event.address.split(",")[0]
-      : "Location N/A"); // Show only first part of address for brevity
+      : "Location N/A");
   const displayPriceOnCard =
     event.list_price || (event.isDetailed && event.price) || "Price N/A";
 
@@ -110,26 +104,26 @@ const EventListItem: React.FC<EventListItemProps> = ({
   const imagePlaceholderSvg =
     "data:image/svg+xml;charset=UTF-8,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='120' height='120' fill='%23E5E7EB'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23A0AEC0' font-family='sans-serif' font-size='10px'%3EImage%3C/text%3E%3C/svg%3E";
   const darkImagePlaceholderSvg =
-    "data:image/svg+xml;charset=UTF-8,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='120' height='120' fill='%232D3748'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23718096' font-family='sans-serif' font-size='10px'%3EImage%3C/text%3E%3C/svg%3E";
+    "data:image/svg+xml;charset=UTF-8,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='120' height='120' fill='%231f2937'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%234b5563' font-family='sans-serif' font-size='10px'%3EImage%3C/text%3E%3C/svg%3E"; // Updated placeholder dark bg to a dark gray
 
   return (
     <Tilt
       className="w-full h-full"
     >
       <div
-        className={`group relative flex flex-col overflow-hidden rounded-xl bg-white dark:bg-slate-800/80 backdrop-blur-sm
+        className={`group relative flex flex-col overflow-hidden rounded-xl bg-white dark:bg-neutral-900/80 backdrop-blur-sm 
                   shadow-lg hover:shadow-xl focus-within:shadow-xl
                   transition-all duration-300 ease-in-out cursor-pointer h-full 
                   ${
                     isSelectedInGrid
                       ? "ring-2 ring-blue-500 dark:ring-blue-400"
-                      : "border border-gray-200 dark:border-slate-700/70"
+                      : "border border-gray-200 dark:border-neutral-800/70" // Adjusted dark border
                   }
                   ${
                     isLoadingDetails && isSelectedInGrid
                       ? "opacity-60 animate-pulse"
                       : ""
-                  }`} // Animate if this item is loading for overlay
+                  }`}
         onClick={
           !(isLoadingDetails && isSelectedInGrid)
             ? () => onSelectEvent(event)
@@ -140,13 +134,13 @@ const EventListItem: React.FC<EventListItemProps> = ({
           if (e.key === "Enter" || e.key === " ") onSelectEvent(event);
         }}
       >
-        <div className="w-full h-36 sm:h-40 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
+        <div className="w-full h-36 sm:h-40 flex-shrink-0 bg-gray-100 dark:bg-neutral-800"> {/* Adjusted dark bg for image container */}
           {event.image_url ? (
             <img
               src={event.image_url}
               alt={event.title}
               className="w-full h-full object-cover"
-              loading="lazy" // Added lazy loading for grid images
+              loading="lazy"
               onError={(e) => {
                 const target = e.currentTarget;
                 target.onerror = null;
@@ -178,8 +172,6 @@ const EventListItem: React.FC<EventListItemProps> = ({
             </h3>
 
             <div className="space-y-1 text-xs">
-              {" "}
-              {/* Reduced space */}
               {displayDateTimeOnCard !== "Date/Time N/A" && (
                 <GridInfoRow
                   icon={<CalendarIcon />}
@@ -205,7 +197,6 @@ const EventListItem: React.FC<EventListItemProps> = ({
             </div>
           </div>
 
-          {/* Short description can still be shown if available and not selected for overlay */}
           {event.short_description &&
             (!isSelectedInGrid || !event.isDetailed) && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed line-clamp-2">
@@ -213,7 +204,6 @@ const EventListItem: React.FC<EventListItemProps> = ({
               </p>
             )}
         </div>
-        {/* MiniMap is REMOVED from here */}
       </div>
     </Tilt>
   );
