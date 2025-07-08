@@ -45,8 +45,12 @@ function App() {
   const [loadingDetailsFor, setLoadingDetailsFor] = useState<string | null>(
     null
   );
-  const [overlayEvent, setOverlayEvent] = useState<EventData | null>(null);
+  const [overlayEvent, setOverlayEvent] = useState<EventData | null>(
+    null
+  );
   const [isFetchingAllDetails, setIsFetchingAllDetails] = useState(false);
+  const [filterFreeEvents, setFilterFreeEvents] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<string>("date-asc"); // Default sort by date ascending
 
   useEffect(() => {
     // console.log("Theme effect running, theme is:", theme); // For debugging
@@ -236,6 +240,58 @@ function App() {
 
   const mapEvents = events.filter((e) => e.latitude && e.longitude);
 
+  const filteredAndSortedEvents = React.useMemo(() => {
+    let currentEvents = [...events];
+
+    // 1. Filtering
+    if (filterFreeEvents) {
+      currentEvents = currentEvents.filter(event => {
+        const priceString = event.price || event.list_price;
+        return priceString && (priceString.toLowerCase().includes("free") || priceString.trim() === "€ 0,00");
+      });
+    }
+
+    // 2. Sorting
+    currentEvents.sort((a, b) => {
+      switch (sortBy) {
+        case "date-asc":
+          {
+            const dateA = a.start_datetime || a.list_date;
+            const dateB = b.start_datetime || b.list_date;
+            if (!dateA && !dateB) return 0;
+            if (!dateA) return 1;
+            if (!dateB) return -1;
+            return new Date(dateA).getTime() - new Date(dateB).getTime();
+          }
+        case "date-desc":
+          {
+            const dateA = a.start_datetime || a.list_date;
+            const dateB = b.start_datetime || b.list_date;
+            if (!dateA && !dateB) return 0;
+            if (!dateA) return 1;
+            if (!dateB) return -1;
+            return new Date(dateB).getTime() - new Date(dateA).getTime();
+          }
+        case "price-asc":
+          {
+            const priceA = parseFloat((a.price || a.list_price || "0").replace("€", "").replace(",", ".").trim());
+            const priceB = parseFloat((b.price || b.list_price || "0").replace("€", "").replace(",", ".").trim());
+            return priceA - priceB;
+          }
+        case "price-desc":
+          {
+            const priceA = parseFloat((a.price || a.list_price || "0").replace("€", "").replace(",", ".").trim());
+            const priceB = parseFloat((b.price || b.list_price || "0").replace("€", "").replace(",", ".").trim());
+            return priceB - priceA;
+          }
+        default:
+          return 0;
+      }
+    });
+
+    return currentEvents;
+  }, [events, filterFreeEvents, sortBy]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-black text-gray-900 dark:text-gray-100 antialiased">
       <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
@@ -248,6 +304,32 @@ function App() {
         </div>
         
         <div className="flex-none flex items-center space-x-2">
+            {/* Filter and Sort Controls */}
+            <div className="flex items-center space-x-2">
+                <label htmlFor="free-events-filter" className="flex items-center cursor-pointer text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+                    <input
+                        type="checkbox"
+                        id="free-events-filter"
+                        checked={filterFreeEvents}
+                        onChange={(e) => setFilterFreeEvents(e.target.checked)}
+                        className="mr-1 rounded text-blue-600 dark:text-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                    />
+                    Free Events
+                </label>
+
+                <select
+                    id="sort-by"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="px-2 py-1 rounded-md bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                >
+                    <option value="date-asc">Date (Asc)</option>
+                    <option value="date-desc">Date (Desc)</option>
+                    <option value="price-asc">Price (Asc)</option>
+                    <option value="price-desc">Price (Desc)</option>
+                </select>
+            </div>
+
             <div className="flex space-x-1 bg-gray-200 dark:bg-neutral-800 p-0.5 rounded-lg shadow-sm">
                 {/* View Toggle Buttons with dark mode styling */}
                 <button
@@ -297,7 +379,7 @@ function App() {
           <>
             {currentView === "list" && (
               <EventList
-                events={events}
+                events={filteredAndSortedEvents}
                 onSelectEvent={handleSelectEvent}
                 loadingDetailsFor={loadingDetailsFor}
                 eventInOverlayId={overlayEvent?.id}
