@@ -8,6 +8,9 @@ interface EventListItemProps {
   onSelectEvent: (event: EventData) => void;
   isSelectedInGrid?: boolean;
   isLoadingDetails?: boolean;
+  isContinuation?: boolean;
+  currentDayIndex?: number;
+  totalDays?: number;
 }
 
 const formatDate = (dateTimeStr?: string): string => {
@@ -70,7 +73,28 @@ const EventListItem: React.FC<EventListItemProps> = ({
   onSelectEvent,
   isSelectedInGrid,
   isLoadingDetails,
+  isContinuation,
+  currentDayIndex,
+  totalDays,
 }) => {
+  if (isContinuation) {
+    return (
+      <div
+        className={`relative w-full p-1 mb-1 rounded-md text-xs font-medium text-white 
+                    bg-blue-500 dark:bg-blue-700 overflow-hidden whitespace-nowrap truncate
+                    cursor-pointer hover:bg-blue-600 dark:hover:bg-blue-800
+                    ${isLoadingDetails ? "opacity-60 animate-pulse" : ""}`}
+        onClick={() => onSelectEvent(event)}
+        title={event.title}
+      >
+        {event.title}
+        {currentDayIndex && totalDays && (
+          <span className="ml-2 text-blue-200 dark:text-blue-400">{`Day ${currentDayIndex} of ${totalDays}`}</span>
+        )}
+      </div>
+    );
+  }
+
   const itemDate =
     event.isDetailed && event.start_datetime
       ? formatDate(event.start_datetime)

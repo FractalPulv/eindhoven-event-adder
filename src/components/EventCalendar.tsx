@@ -2,7 +2,7 @@
 import React from 'react';
 import { EventData } from '../types';
 import EventListItem from './EventListItem';
-import { format, startOfWeek, addDays, isSameDay, min, max, eachDayOfInterval, parse } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, min, max, eachDayOfInterval, parse, differenceInDays } from 'date-fns';
 
 // Helper function to parse various list_date formats
 const parseListDateRange = (dateString?: string) => {
@@ -134,15 +134,45 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
                       const timeB = b.start_datetime ? new Date(b.start_datetime).getTime() : Infinity;
                       return timeA - timeB;
                     })
-                    .map((event) => (
-                      <EventListItem
-                        key={event.id}
-                        event={event}
-                        onSelectEvent={onSelectEvent}
-                        isLoadingDetails={loadingDetailsFor === event.id}
-                        isInOverlay={eventInOverlayId === event.id}
-                      />
-                    ))
+                    .map((event) => {
+                      let eventEffectiveStartDate: Date | null = null;
+                      let eventEffectiveEndDate: Date | null = null;
+
+                      if (event.start_datetime) {
+                        const parsed = new Date(event.start_datetime);
+                        if (!isNaN(parsed.getTime())) {
+                          eventEffectiveStartDate = parsed;
+                          eventEffectiveEndDate = parsed;
+                        }
+                      } else if (event.list_date) {
+                        const { startDate, endDate } = parseListDateRange(event.list_date);
+                        eventEffectiveStartDate = startDate;
+                        eventEffectiveEndDate = endDate;
+                      }
+
+                      const isContinuation = eventEffectiveStartDate ? !isSameDay(eventEffectiveStartDate, day) : false;
+                      
+                      let currentDayIndex: number | undefined;
+                      let totalDays: number | undefined;
+
+                      if (eventEffectiveStartDate && eventEffectiveEndDate) {
+                        totalDays = differenceInDays(eventEffectiveEndDate, eventEffectiveStartDate) + 1;
+                        currentDayIndex = differenceInDays(day, eventEffectiveStartDate) + 1;
+                      }
+
+                      return (
+                        <EventListItem
+                          key={event.id}
+                          event={event}
+                          onSelectEvent={onSelectEvent}
+                          isLoadingDetails={loadingDetailsFor === event.id}
+                          isInOverlay={eventInOverlayId === event.id}
+                          isContinuation={isContinuation}
+                          currentDayIndex={currentDayIndex}
+                          totalDays={totalDays}
+                        />
+                      );
+                    })
                 ) : (
                   <p className="text-gray-500 dark:text-gray-400 text-sm">No events</p>
                 )}
