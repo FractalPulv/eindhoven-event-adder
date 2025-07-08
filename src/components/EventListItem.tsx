@@ -108,7 +108,7 @@ const EventListItem: React.FC<EventListItemProps> = ({
 
   return (
     <Tilt
-      className="w-full h-full"
+      className="w-full"
     >
       <div
         className={`group relative flex flex-col overflow-hidden rounded-xl bg-white dark:bg-neutral-900/80 backdrop-blur-sm 
@@ -134,7 +134,7 @@ const EventListItem: React.FC<EventListItemProps> = ({
           if (e.key === "Enter" || e.key === " ") onSelectEvent(event);
         }}
       >
-        <div className="w-full h-36 sm:h-40 flex-shrink-0 bg-gray-100 dark:bg-neutral-800"> {/* Adjusted dark bg for image container */}
+        <div className="w-full h-24 flex-shrink-0 bg-gray-100 dark:bg-neutral-800"> {/* Adjusted dark bg for image container */}
           {event.image_url ? (
             <img
               src={event.image_url}
@@ -165,13 +165,13 @@ const EventListItem: React.FC<EventListItemProps> = ({
           )}
         </div>
 
-        <div className="p-3 sm:p-4 flex-grow flex flex-col justify-between">
+        <div className="p-2 flex-grow flex flex-col justify-between">
           <div>
-            <h3 className="font-semibold text-sm sm:text-base text-blue-600 dark:text-blue-400 mb-1.5 leading-tight group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors line-clamp-2">
+            <h3 className="font-semibold text-xs text-blue-600 dark:text-blue-400 mb-1 leading-tight group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors line-clamp-2">
               {event.title}
             </h3>
 
-            <div className="space-y-1 text-xs">
+            <div className="space-y-0.5 text-xs">
               {displayDateTimeOnCard !== "Date/Time N/A" && (
                 <GridInfoRow
                   icon={<CalendarIcon />}

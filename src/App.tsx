@@ -14,6 +14,7 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import EventList from "./components/EventList";
 import EventMap from "./components/EventMap";
 import ThemeToggle from "./components/ThemeToggle";
+import EventCalendar from "./components/EventCalendar";
 import { RefreshCwIcon } from "./components/Icons";
 
 // Types
@@ -21,7 +22,7 @@ import { EventData } from "./types";
 
 const EindhovenCentraalStation: LatLngExpression = [51.4416, 5.4697];
 type Theme = "light" | "dark";
-type View = "list" | "map";
+type View = "list" | "map" | "calendar";
 
 function App() {
   const [events, setEvents] = useState<EventData[]>([]);
@@ -73,9 +74,13 @@ function App() {
       setError(null);
       try {
         const fetchedSummaries = await invoke<EventData[]>("fetch_events_rust");
-        setEvents(
-          fetchedSummaries.map((event) => ({ ...event, isDetailed: false }))
-        );
+        const initialEvents = fetchedSummaries.map((event) => ({ ...event, isDetailed: false }));
+        setEvents(initialEvents);
+        console.log("Initial event summaries:", initialEvents);
+
+        // Automatically fetch all details for map/calendar functionality
+        // This will be optimized later with caching and page limits
+        await handleFetchAllDetails();
       } catch (e: any) {
         setError(
           `Failed to fetch event summaries: ${e.message || e.toString()}`
@@ -348,6 +353,14 @@ function App() {
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-300/50 dark:hover:bg-neutral-700/50"
                         }`}
                 > Map </button>
+                <button
+                    onClick={() => { setCurrentView("calendar"); if (overlayEvent) handleCloseOverlay(); }}
+                    className={`px-3 py-1 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800
+                        ${ currentView === "calendar"
+                            ? "bg-white dark:bg-neutral-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-300/50 dark:hover:bg-neutral-700/50"
+                        }`}
+                > Calendar </button>
             </div>
             {currentView === "map" && (
                  <button
@@ -395,6 +408,14 @@ function App() {
                   theme={theme}
                 />
               </div>
+            )}
+            {currentView === "calendar" && (
+              <EventCalendar
+                events={filteredAndSortedEvents}
+                onSelectEvent={handleSelectEvent}
+                loadingDetailsFor={loadingDetailsFor}
+                eventInOverlayId={overlayEvent?.id}
+              />
             )}
           </>
         )}

@@ -17,6 +17,7 @@
     "@tauri-apps/plugin-fs": "^2.3.0",
     "@tauri-apps/plugin-opener": "^2.2.7",
     "@tauri-apps/plugin-shell": "^2.2.1",
+    "date-fns": "^4.1.0",
     "leaflet": "^1.9.4",
     "react": "^19.0.0-rc.1",
     "react-dom": "^19.0.0-rc.1",
