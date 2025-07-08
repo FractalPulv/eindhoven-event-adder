@@ -62,6 +62,20 @@ html {
   background-color: rgba(255, 255, 255, 0.35);
 }
 
+/* Custom animation for fast pulse */
+@keyframes pulse-fast {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+
+.animate-pulse-fast {
+  animation: pulse-fast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
 /* Leaflet Map Dark Mode Tile Inversion (Alternative if specific dark tiles are not used or as fallback) */
 /* This is less ideal than using proper dark tiles, but can be a quick fix */
 /* We will use CartoDB dark tiles instead, so this is commented out.

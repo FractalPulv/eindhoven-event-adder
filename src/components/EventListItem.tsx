@@ -11,6 +11,7 @@ interface EventListItemProps {
   isContinuation?: boolean;
   currentDayIndex?: number;
   totalDays?: number;
+  eventColor?: { light: string; dark: string };
 }
 
 const formatDate = (dateTimeStr?: string): string => {
@@ -76,13 +77,15 @@ const EventListItem: React.FC<EventListItemProps> = ({
   isContinuation,
   currentDayIndex,
   totalDays,
+  eventColor,
 }) => {
   if (isContinuation) {
+    const bgColorClass = eventColor ? `${eventColor.light} ${eventColor.dark}` : "bg-blue-500 dark:bg-blue-700";
     return (
       <div
         className={`relative w-full p-1 mb-1 rounded-md text-xs font-medium text-white 
-                    bg-blue-500 dark:bg-blue-700 overflow-hidden whitespace-nowrap truncate
-                    cursor-pointer hover:bg-blue-600 dark:hover:bg-blue-800
+                    ${bgColorClass} overflow-hidden whitespace-nowrap truncate
+                    cursor-pointer hover:opacity-80 transition-opacity
                     ${isLoadingDetails ? "opacity-60 animate-pulse" : ""}`}
         onClick={() => onSelectEvent(event)}
         title={event.title}

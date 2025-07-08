@@ -47,6 +47,16 @@ interface EventCalendarProps {
   eventInOverlayId: string | null;
 }
 
+const stringToHash = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+};
+
 const EventCalendar: React.FC<EventCalendarProps> = ({
   events,
   onSelectEvent,
@@ -78,6 +88,29 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
     });
     console.log("Calendar Days:", calendarDays);
   }
+
+  const colorPalette = [
+    { light: "bg-blue-500", dark: "dark:bg-blue-700" },
+    { light: "bg-green-500", dark: "dark:bg-green-700" },
+    { light: "bg-purple-500", dark: "dark:bg-purple-700" },
+    { light: "bg-indigo-500", dark: "dark:bg-indigo-700" },
+    { light: "bg-yellow-500", dark: "dark:bg-yellow-700" },
+    { light: "bg-red-500", dark: "dark:bg-red-700" },
+    { light: "bg-pink-500", dark: "dark:bg-pink-700" },
+  ];
+
+  const eventColors = React.useMemo(() => {
+    const colors = new Map<string, { light: string; dark: string }>();
+    for (const event of events) {
+      if (!colors.has(event.id)) {
+        const hash = stringToHash(event.id);
+        const assignedColor = colorPalette[hash % colorPalette.length];
+        colors.set(event.id, assignedColor);
+        console.log(`Event ID: ${event.id}, Hash: ${hash}, Assigned Color: ${assignedColor.light}`);
+      }
+    }
+    return colors;
+  }, [events]);
 
   const groupedEvents = calendarDays.reduce((acc, day) => {
     const dayKey = format(day, 'yyyy-MM-dd');
@@ -170,6 +203,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
                           isContinuation={isContinuation}
                           currentDayIndex={currentDayIndex}
                           totalDays={totalDays}
+                          eventColor={eventColors.get(event.id)}
                         />
                       );
                     })

@@ -52,6 +52,9 @@ function App() {
   const [isFetchingAllDetails, setIsFetchingAllDetails] = useState(false);
   const [filterFreeEvents, setFilterFreeEvents] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>("date-asc"); // Default sort by date ascending
+  const [pageLimit, setPageLimit] = useState<number | undefined>(undefined); // New state for page limit
+  const [forceRefresh, setForceRefresh] = useState<boolean>(false); // New state to force refresh
+  const [isScraping, setIsScraping] = useState<boolean>(false); // New state for scraping status
 
   useEffect(() => {
     // console.log("Theme effect running, theme is:", theme); // For debugging
@@ -72,15 +75,12 @@ function App() {
     const loadEventSummaries = async () => {
       setLoading(true);
       setError(null);
+      setIsScraping(true); // Start scraping animation
       try {
-        const fetchedSummaries = await invoke<EventData[]>("fetch_events_rust");
-        const initialEvents = fetchedSummaries.map((event) => ({ ...event, isDetailed: false }));
-        setEvents(initialEvents);
-        console.log("Initial event summaries:", initialEvents);
-
-        // Automatically fetch all details for map/calendar functionality
-        // This will be optimized later with caching and page limits
-        await handleFetchAllDetails();
+        const fetchedSummaries = await invoke<EventData[]>("fetch_events_rust", { pageLimit: pageLimit, forceRefresh: forceRefresh });
+        setEvents(
+          fetchedSummaries.map((event) => ({ ...event, isDetailed: false }))
+        );
       } catch (e: any) {
         setError(
           `Failed to fetch event summaries: ${e.message || e.toString()}`
@@ -88,10 +88,12 @@ function App() {
         console.error("Fetch summaries error:", e);
       } finally {
         setLoading(false);
+        setForceRefresh(false); // Reset forceRefresh after fetch
+        setIsScraping(false); // End scraping animation
       }
     };
     loadEventSummaries();
-  }, []);
+  }, [pageLimit, forceRefresh]);
 
   const handleSelectEvent = useCallback(
     async (eventData: EventData) => {
@@ -311,6 +313,26 @@ function App() {
         <div className="flex-none flex items-center space-x-2">
             {/* Filter and Sort Controls */}
             <div className="flex items-center space-x-2">
+                <label htmlFor="page-limit" className="text-xs sm:text-sm text-gray-700 dark:text-gray-300">Pages:</label>
+                <input
+                    type="number"
+                    id="page-limit"
+                    min="1"
+                    value={pageLimit || ''}
+                    onChange={(e) => setPageLimit(e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="w-16 px-2 py-1 rounded-md bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                    placeholder="All"
+                />
+                <button
+                    onClick={() => setForceRefresh(true)}
+                    disabled={loading}
+                    className="px-3 py-1 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800 bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300/70 dark:hover:bg-neutral-700/70 text-gray-700 dark:text-gray-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Refresh
+                </button>
+            </div>
+
+            <div className="flex items-center space-x-2">
                 <label htmlFor="free-events-filter" className="flex items-center cursor-pointer text-xs sm:text-sm text-gray-700 dark:text-gray-300">
                     <input
                         type="checkbox"
@@ -381,6 +403,14 @@ function App() {
           <p className="p-4 text-center text-gray-700 dark:text-gray-300 text-base">
             Loading event summaries...
           </p>
+        )}
+        {isScraping && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 dark:bg-black bg-opacity-75 dark:bg-opacity-75 z-50">
+            <div className="w-64 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden">
+              <div className="bg-blue-600 h-2.5 rounded-full animate-pulse-fast"></div>
+            </div>
+            <p className="mt-3 text-gray-700 dark:text-gray-300 text-base">Scraping events...</p>
+          </div>
         )}
         {error && (
           <p className="p-4 text-center text-red-500 dark:text-red-400 text-base">

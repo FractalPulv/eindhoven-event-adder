@@ -1,6 +1,7 @@
 // File: src-tauri/src/lib.rs
 mod models;
 mod scraper; // This now refers to src/scraper/mod.rs
+mod cache;
 
 use models::Event;
 use reqwest::blocking::Client;
@@ -39,16 +40,16 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn fetch_events_rust() -> Result<Vec<Event>, String> {
-    log::info!("fetch_events_rust (summaries) command invoked");
-    match tauri::async_runtime::spawn_blocking(|| {
+async fn fetch_events_rust(page_limit: Option<u32>) -> Result<Vec<Event>, String> {
+    log::info!("fetch_events_rust (summaries) command invoked with page_limit: {:?}", page_limit);
+    match tauri::async_runtime::spawn_blocking(move || {
         let client_builder = Client::builder()
             .user_agent(APP_USER_AGENT_FOR_SCRAPING) 
             .timeout(Duration::from_secs(15));
 
         match client_builder.build() {
             Ok(client) => {
-                scraper::fetch_event_list_summaries(&client) 
+                scraper::fetch_event_list_summaries(&client, page_limit) 
                     .map_err(|e| e.to_string())
             }
             Err(e) => Err(format!("Failed to build HTTP client: {}", e.to_string())),

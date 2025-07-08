@@ -6,14 +6,28 @@ use url::Url;
 
 use super::utils::*;
 use crate::models::Event;
+use crate::cache::{self, CacheEntry};
 
-// fetch_event_list_summaries remains the same
-pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn Error>> {
+pub fn fetch_event_list_summaries(client: &Client, page_limit: Option<u32>) -> Result<Vec<Event>, Box<dyn Error>> {
+    // Try to read from cache first
+    if let Some(cached_entry) = cache::read_cache::<Vec<Event>>() {
+        if cached_entry.is_fresh() {
+            log::info!("Returning events from cache.");
+            return Ok(cached_entry.data);
+        }
+    }
+
     let mut all_events: Vec<Event> = Vec::new();
     let mut page = 1;
     let mut has_more_pages = true;
 
     while has_more_pages {
+        if let Some(limit) = page_limit {
+            if page > limit {
+                log::info!("Page limit ({}) reached. Stopping scraping.", limit);
+                break;
+            }
+        }
         let page_url = format!("{}/en/events?page={}", BASE_URL, page);
         log::info!("Fetching event list summaries from: {}", page_url);
 
@@ -27,7 +41,6 @@ pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn
         for (_index, card_element) in document.select(&card_selector).enumerate() {
             page_events_found += 1;
             let mut event = Event::default();
-        let mut event = Event::default();
         event.url_suffix = card_element.value().attr("href").map(str::to_string);
         if event.url_suffix.is_none()
             || !event
@@ -159,6 +172,11 @@ pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn
                 has_more_pages = false;
             }
         }
+    }
+    // Write to cache before returning
+    let cache_entry = CacheEntry::new(all_events.clone());
+    if let Err(e) = cache::write_cache(&cache_entry) {
+        log::error!("Failed to write events to cache: {}", e);
     }
     Ok(all_events)
 }
@@ -391,7 +409,7 @@ pub(super) fn get_all_events_with_details_internal_testing() -> Result<Vec<Event
         .user_agent(USER_AGENT_FOR_SCRAPING_INTERNAL_TEST)
         .timeout(std::time::Duration::from_secs(15))
         .build()?;
-    let event_summaries = fetch_event_list_summaries(&client)?;
+    let event_summaries = fetch_event_list_summaries(&client, None)?;
     let mut detailed_events = Vec::new();
     for summary in event_summaries {
         match fetch_event_details(&client, summary) {
