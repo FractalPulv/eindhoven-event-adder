@@ -9,15 +9,24 @@ use crate::models::Event;
 
 // fetch_event_list_summaries remains the same
 pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn Error>> {
-    log::info!("Fetching event list summaries from: {}/en/events", BASE_URL);
-    let main_page_url = format!("{}/en/events", BASE_URL);
-    let response_text = client.get(&main_page_url).send()?.text()?;
-    let document = Html::parse_document(&response_text);
-    let card_selector = Selector::parse("a.result-card.result-card-generic")
-        .map_err(|e| format!("Failed to parse card_selector: {:?}", e))?;
-    let mut events: Vec<Event> = Vec::new();
+    let mut all_events: Vec<Event> = Vec::new();
+    let mut page = 1;
+    let mut has_more_pages = true;
 
-    for (_index, card_element) in document.select(&card_selector).enumerate() {
+    while has_more_pages {
+        let page_url = format!("{}/en/events?page={}", BASE_URL, page);
+        log::info!("Fetching event list summaries from: {}", page_url);
+
+        let response_text = client.get(&page_url).send()?.text()?;
+        let document = Html::parse_document(&response_text);
+
+        let card_selector = Selector::parse("a.result-card.result-card-generic")
+            .map_err(|e| format!("Failed to parse card_selector: {:?}", e))?;
+        
+        let mut page_events_found = 0;
+        for (_index, card_element) in document.select(&card_selector).enumerate() {
+            page_events_found += 1;
+            let mut event = Event::default();
         let mut event = Event::default();
         event.url_suffix = card_element.value().attr("href").map(str::to_string);
         if event.url_suffix.is_none()
@@ -133,9 +142,25 @@ pub fn fetch_event_list_summaries(client: &Client) -> Result<Vec<Event>, Box<dyn
                 }
             }
         }
-        events.push(event);
+        all_events.push(event);
+        }
+
+        if page_events_found == 0 {
+            log::info!("No event cards found on page {}. Assuming last page.", page);
+            has_more_pages = false;
+        } else {
+            // Check for a 'next page' link to determine if there are more pages
+            // This selector might need adjustment based on the actual HTML structure
+            let next_page_selector = Selector::parse("a.pagination__next")
+                .map_err(|e| format!("Failed to parse next_page_selector: {:?}", e))?;
+            if document.select(&next_page_selector).next().is_some() {
+                page += 1;
+            } else {
+                has_more_pages = false;
+            }
+        }
     }
-    Ok(events)
+    Ok(all_events)
 }
 
 pub fn fetch_event_details(client: &Client, mut event: Event) -> Result<Event, Box<dyn Error>> {
