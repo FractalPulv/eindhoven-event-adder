@@ -159,12 +159,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
             const weekStart = weekIndex * 7;
             const weekDays = calendarDays.slice(weekStart, weekStart + 7);
             
-            // Check if this week has any events
-            const hasEventsInWeek = weekDays.some(day => groupedEvents[format(day, 'yyyy-MM-dd')]?.length > 0);
-
-            if (!hasEventsInWeek) {
-              return null; // Skip rendering this empty week
-            }
+            
 
             return weekDays.map((day) => (
               <div key={format(day, 'yyyy-MM-dd')} className="flex flex-col bg-white dark:bg-neutral-900 rounded-lg shadow-md p-2">
@@ -172,58 +167,54 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
                   {format(day, 'MMM d')}
                 </h3>
                 <div className="flex-grow overflow-y-auto custom-scrollbar">
-                  {groupedEvents[format(day, 'yyyy-MM-dd')]?.length > 0 ? (
-                    groupedEvents[format(day, 'yyyy-MM-dd')]
-                      .sort((a, b) => {
-                        const timeA = a.start_datetime ? new Date(a.start_datetime).getTime() : Infinity;
-                        const timeB = b.start_datetime ? new Date(b.start_datetime).getTime() : Infinity;
-                        return timeA - timeB;
-                      })
-                      .map((event) => {
-                        let eventEffectiveStartDate: Date | null = null;
-                        let eventEffectiveEndDate: Date | null = null;
+                  {groupedEvents[format(day, 'yyyy-MM-dd')]
+                    .sort((a, b) => {
+                      const timeA = a.start_datetime ? new Date(a.start_datetime).getTime() : Infinity;
+                      const timeB = b.start_datetime ? new Date(b.start_datetime).getTime() : Infinity;
+                      return timeA - timeB;
+                    })
+                    .map((event) => {
+                      let eventEffectiveStartDate: Date | null = null;
+                      let eventEffectiveEndDate: Date | null = null;
 
-                        if (event.start_datetime) {
-                          const parsed = new Date(event.start_datetime);
-                          if (!isNaN(parsed.getTime())) {
-                            eventEffectiveStartDate = parsed;
-                            eventEffectiveEndDate = parsed;
-                          }
-                        } else if (event.list_date) {
-                          const { startDate, endDate } = parseListDateRange(event.list_date);
-                          eventEffectiveStartDate = startDate;
-                          eventEffectiveEndDate = endDate;
+                      if (event.start_datetime) {
+                        const parsed = new Date(event.start_datetime);
+                        if (!isNaN(parsed.getTime())) {
+                          eventEffectiveStartDate = parsed;
+                          eventEffectiveEndDate = parsed;
                         }
+                      } else if (event.list_date) {
+                        const { startDate, endDate } = parseListDateRange(event.list_date);
+                        eventEffectiveStartDate = startDate;
+                        eventEffectiveEndDate = endDate;
+                      }
 
-                        const isContinuation = eventEffectiveStartDate ? !isSameDay(eventEffectiveStartDate, day) : false;
-                        
-                        let currentDayIndex: number | undefined;
-                        let totalDays: number | undefined;
+                      const isContinuation = eventEffectiveStartDate ? !isSameDay(eventEffectiveStartDate, day) : false;
+                      
+                      let currentDayIndex: number | undefined;
+                      let totalDays: number | undefined;
 
-                        if (eventEffectiveStartDate && eventEffectiveEndDate) {
-                          totalDays = differenceInDays(eventEffectiveEndDate, eventEffectiveStartDate) + 1;
-                          currentDayIndex = differenceInDays(day, eventEffectiveStartDate) + 1;
-                        }
+                      if (eventEffectiveStartDate && eventEffectiveEndDate) {
+                        totalDays = differenceInDays(eventEffectiveEndDate, eventEffectiveStartDate) + 1;
+                        currentDayIndex = differenceInDays(day, eventEffectiveStartDate) + 1;
+                      }
 
-                        return (
-                          <EventListItem
-                            key={event.id}
-                            event={event}
-                            onSelectEvent={onSelectEvent}
-                            isLoadingDetails={loadingDetailsFor === event.id}
-                            isInOverlay={eventInOverlayId === event.id}
-                            isContinuation={isContinuation}
-                            currentDayIndex={currentDayIndex}
-                            totalDays={totalDays}
-                            eventColor={eventColors.get(event.id)}
-                            hideDateInCalendar={true}
-                            isCalendarView={true}
-                          />
-                        );
-                      })
-                  ) : (
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">No events</p>
-                  )}
+                      return (
+                        <EventListItem
+                          key={event.id}
+                          event={event}
+                          onSelectEvent={onSelectEvent}
+                          isLoadingDetails={loadingDetailsFor === event.id}
+                          isInOverlay={eventInOverlayId === event.id}
+                          isContinuation={isContinuation}
+                          currentDayIndex={currentDayIndex}
+                          totalDays={totalDays}
+                          eventColor={eventColors.get(event.id)}
+                          hideDateInCalendar={true}
+                          isCalendarView={true}
+                        />
+                      );
+                    })}
                 </div>
               </div>
             ));

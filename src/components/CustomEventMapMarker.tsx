@@ -1,6 +1,5 @@
 import React from 'react';
 import { EventData } from '../types';
-import { MapPinIcon } from './Icons'; // Assuming you have a simple pin icon
 
 interface CustomEventMapMarkerProps {
   event: EventData;

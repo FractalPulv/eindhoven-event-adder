@@ -94,10 +94,12 @@ const EventListItem: React.FC<EventListItemProps> = ({
         onClick={() => onSelectEvent(event)}
         title={event.title}
       >
-        {event.title}
-        {currentDayIndex && totalDays && (
-          <span className="ml-2 text-blue-200 dark:text-blue-400">{`Day ${currentDayIndex} of ${totalDays}`}</span>
-        )}
+        <div className="flex justify-between items-center w-full">
+          <span className="flex-grow truncate">{event.title}</span>
+          {currentDayIndex && totalDays && (
+            <span className="flex-shrink-0 ml-2 text-blue-200 dark:text-blue-400">{`Day ${currentDayIndex} of ${totalDays}`}</span>
+          )}
+        </div>
       </div>
     );
   }

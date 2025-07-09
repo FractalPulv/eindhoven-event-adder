@@ -26,6 +26,7 @@ export interface EventData {
   
   list_price?: string;
   price?: string;
+  ticket_url?: string;
 
   isDetailed?: boolean; // New flag
 }
