@@ -8,6 +8,7 @@ interface EventListItemProps {
   onSelectEvent: (event: EventData) => void;
   isSelectedInGrid?: boolean;
   isLoadingDetails?: boolean;
+  isInOverlay?: boolean;
   isContinuation?: boolean;
   currentDayIndex?: number;
   totalDays?: number;

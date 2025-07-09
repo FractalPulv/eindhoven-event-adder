@@ -1,7 +1,7 @@
 // File: src/components/MiniMap.tsx
 import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
-import L, { LatLngExpression } from 'leaflet';
+import { LatLngExpression } from 'leaflet';
 
 interface MiniMapProps {
   center: LatLngExpression;
@@ -19,16 +19,9 @@ const ChangeViewMini: React.FC<{ center: LatLngExpression; zoom: number }> = ({ 
 };
 
 const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", theme }) => {
-  const mapCenter = Array.isArray(center) && center.length === 2 && typeof center[0] === 'number' && typeof center[1] === 'number'
-    ? center
-    : [0, 0];
-
   let tileUrl: string;
   let tileAttribution: string;
   let tileSubdomains: string | string[] = 'abc'; // Default
-
-  // NOTE: For production, replace {YOUR_API_KEY} with an actual API key from Stadia Maps.
-  const stadiaApiKey = "YOUR_STADIA_MAPS_API_KEY"; // Replace or remove for dev
 
   if (theme === 'dark') {
     // Stadia Alidade Smooth Dark
@@ -49,7 +42,7 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
     <div id={mapId} className={`w-full rounded-lg overflow-hidden shadow-md ${className}`}>
     <MapContainer
       key={theme + tileUrl} // Add tileUrl to key
-      center={mapCenter}
+      center={center}
       zoom={zoom}
       style={{ height: "100%", width: "100%" }}
       scrollWheelZoom={false}
@@ -58,14 +51,14 @@ const MiniMap: React.FC<MiniMapProps> = ({ center, zoom = 15, className = "", th
       touchZoom={false}
       attributionControl={false}
     >
-      <ChangeViewMini center={mapCenter} zoom={zoom} />
+      <ChangeViewMini center={center} zoom={zoom} />
       <TileLayer
         url={tileUrl}
         attribution={tileAttribution}
         subdomains={tileSubdomains}
         maxZoom={19}
       />
-      <Marker position={mapCenter} />
+      <Marker position={center} />
     </MapContainer>
     </div>
   );

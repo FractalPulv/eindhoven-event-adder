@@ -1,7 +1,6 @@
 // src/components/EventContentSections.tsx
 import React from 'react';
 import MiniMap from './MiniMap'; // Assuming MiniMap is correctly set up
-import { EventData } from '../types';
 
 interface EventContentSectionsProps {
   description?: string;

@@ -1,5 +1,5 @@
 // File: src/App.tsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { LatLngExpression } from "leaflet";
 import "./App.css";
 import EventDetailOverlay from "./components/EventDetailOverlay";
@@ -16,7 +16,9 @@ import EventList from "./components/EventList";
 import EventMap from "./components/EventMap";
 import ThemeToggle from "./components/ThemeToggle";
 import EventCalendar from "./components/EventCalendar";
-import { RefreshCwIcon } from "./components/Icons";
+import { RefreshCwIcon, AdjustmentsHorizontalIcon } from "./components/Icons";
+import FilterOverlay from "./components/FilterOverlay";
+import ScrapingOverlay from "./components/ScrapingOverlay";
 
 // Types
 import { EventData } from "./types";
@@ -65,6 +67,46 @@ function App() {
   const [forceRefresh, setForceRefresh] = useState<boolean>(false); // New state to force refresh
   const [isScraping, setIsScraping] = useState<boolean>(false); // New state for scraping status
   const [scrapingProgress, setScrapingProgress] = useState<ScrapingProgress | null>(null); // New state for scraping progress
+  const [showFilterOverlay, setShowFilterOverlay] = useState(false);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const [minPriceFilter, setMinPriceFilter] = useState<number>(0);
+  const [maxPriceFilter, setMaxPriceFilter] = useState<number>(0);
+  const [showScrapingOverlay, setShowScrapingOverlay] = useState(false);
+  const scrapingButtonRef = useRef<HTMLButtonElement>(null);
+
+  const minAvailablePrice = useMemo(() => {
+    if (events.length === 0) return 0;
+    const prices = events.map(event => {
+      const priceString = event.price || event.list_price;
+      if (priceString) {
+        if (priceString.toLowerCase().includes("free") || priceString.trim() === "€ 0,00") {
+          return 0;
+        }
+        const price = parseFloat(priceString.replace("€", "").replace(",", ".").trim());
+        return isNaN(price) ? Infinity : price;
+      }
+      return Infinity;
+    }).filter(price => price !== Infinity);
+    return prices.length > 0 ? Math.floor(Math.min(...prices)) : 0;
+  }, [events]);
+
+  const maxAvailablePrice = useMemo(() => {
+    if (events.length === 0) return 0;
+    const prices = events.map(event => {
+      const priceString = event.price || event.list_price;
+      if (priceString) {
+        const price = parseFloat(priceString.replace("€", "").replace(",", ".").trim());
+        return isNaN(price) ? 0 : price;
+      }
+      return 0;
+    }).filter(price => price !== 0);
+    return prices.length > 0 ? Math.ceil(Math.max(...prices)) : 0;
+  }, [events]);
+
+  useEffect(() => {
+    setMinPriceFilter(minAvailablePrice);
+    setMaxPriceFilter(maxAvailablePrice);
+  }, [minAvailablePrice, maxAvailablePrice]);
 
   useEffect(() => {
     // console.log("Theme effect running, theme is:", theme); // For debugging
@@ -268,15 +310,25 @@ function App() {
   const filteredAndSortedEvents = React.useMemo(() => {
     let currentEvents = [...events];
 
-    // 1. Filtering
+    // 1. Filtering by free events (if enabled, overrides price range)
     if (filterFreeEvents) {
       currentEvents = currentEvents.filter(event => {
         const priceString = event.price || event.list_price;
         return priceString && (priceString.toLowerCase().includes("free") || priceString.trim() === "€ 0,00");
       });
+    } else { // Apply price range filter only if not filtering for free events
+      currentEvents = currentEvents.filter(event => {
+        const priceString = event.price || event.list_price;
+        if (!priceString) return false; // Events without price are excluded from range filter
+
+        const price = parseFloat(priceString.replace("€", "").replace(",", ".").trim());
+        if (isNaN(price)) return false; // Invalid price string
+
+        return price >= minPriceFilter && price <= maxPriceFilter;
+      });
     }
 
-    // 2. Sorting
+    // 3. Sorting
     currentEvents.sort((a, b) => {
       switch (sortBy) {
         case "date-asc":
@@ -315,7 +367,7 @@ function App() {
     });
 
     return currentEvents;
-  }, [events, filterFreeEvents, sortBy]);
+  }, [events, filterFreeEvents, minPriceFilter, maxPriceFilter, sortBy]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-black text-gray-900 dark:text-gray-100 antialiased">
@@ -329,51 +381,38 @@ function App() {
         </div>
         
         <div className="flex-none flex items-center space-x-2">
-            {/* Filter and Sort Controls */}
-            <div className="flex items-center space-x-2">
-                <label htmlFor="page-limit" className="text-xs sm:text-sm text-gray-700 dark:text-gray-300">Pages:</label>
-                <input
-                    type="number"
-                    id="page-limit"
-                    min="1"
-                    value={pageLimit || ''}
-                    onChange={(e) => setPageLimit(e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-16 px-2 py-1 rounded-md bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-                    placeholder="All"
-                />
-                <button
-                    onClick={() => setForceRefresh(true)}
-                    disabled={loading}
-                    className="px-3 py-1 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800 bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300/70 dark:hover:bg-neutral-700/70 text-gray-700 dark:text-gray-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    Refresh
-                </button>
-            </div>
+            {/* Filter Button */}
+            <button
+                ref={filterButtonRef}
+                onClick={() => setShowFilterOverlay(!showFilterOverlay)}
+                className="p-1.5 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800 bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300/70 dark:hover:bg-neutral-700/70 text-gray-700 dark:text-gray-300 shadow-sm"
+                title="Filter Events"
+            >
+                <AdjustmentsHorizontalIcon className="w-4 h-4" />
+            </button>
 
-            <div className="flex items-center space-x-2">
-                <label htmlFor="free-events-filter" className="flex items-center cursor-pointer text-xs sm:text-sm text-gray-700 dark:text-gray-300">
-                    <input
-                        type="checkbox"
-                        id="free-events-filter"
-                        checked={filterFreeEvents}
-                        onChange={(e) => setFilterFreeEvents(e.target.checked)}
-                        className="mr-1 rounded text-blue-600 dark:text-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
-                    />
-                    Free Events
-                </label>
+            {/* Page Limit and Refresh */}
+            <button
+                ref={scrapingButtonRef}
+                onClick={() => setShowScrapingOverlay(!showScrapingOverlay)}
+                className="p-1.5 rounded-md font-medium transition-all duration-200 text-xs sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-800 bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300/70 dark:hover:bg-neutral-700/70 text-gray-700 dark:text-gray-300 shadow-sm"
+                title="Scraping Options"
+            >
+                <RefreshCwIcon className="w-4 h-4" />
+            </button>
 
-                <select
-                    id="sort-by"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="px-2 py-1 rounded-md bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-                >
-                    <option value="date-asc">Date (Asc)</option>
-                    <option value="date-desc">Date (Desc)</option>
-                    <option value="price-asc">Price (Asc)</option>
-                    <option value="price-desc">Price (Desc)</option>
-                </select>
-            </div>
+            {/* Sort By */}
+            <select
+                id="sort-by"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-2 py-1 rounded-md bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+            >
+                <option value="date-asc">Date (Asc)</option>
+                <option value="date-desc">Date (Desc)</option>
+                <option value="price-asc">Price (Asc)</option>
+                <option value="price-desc">Price (Desc)</option>
+            </select>
 
             <div className="flex space-x-1 bg-gray-200 dark:bg-neutral-800 p-0.5 rounded-lg shadow-sm">
                 {/* View Toggle Buttons with dark mode styling */}
@@ -450,7 +489,7 @@ function App() {
                 events={filteredAndSortedEvents}
                 onSelectEvent={handleSelectEvent}
                 loadingDetailsFor={loadingDetailsFor}
-                eventInOverlayId={overlayEvent?.id}
+                eventInOverlayId={overlayEvent?.id ?? null}
               />
             )}
             {currentView === "map" && (
@@ -469,7 +508,7 @@ function App() {
                 events={filteredAndSortedEvents}
                 onSelectEvent={handleSelectEvent}
                 loadingDetailsFor={loadingDetailsFor}
-                eventInOverlayId={overlayEvent?.id}
+                eventInOverlayId={overlayEvent?.id ?? null}
               />
             )}
           </>
@@ -483,6 +522,32 @@ function App() {
         openEventUrl={openEventUrlInBrowser}
         theme={theme}
         isLoading={loadingDetailsFor !== null && overlayEvent?.id === loadingDetailsFor}
+      />
+
+      <FilterOverlay
+        isOpen={showFilterOverlay}
+        onClose={() => setShowFilterOverlay(false)}
+        anchorEl={filterButtonRef.current}
+        minPrice={minAvailablePrice}
+        maxPrice={maxAvailablePrice}
+        currentMinPrice={minPriceFilter}
+        currentMaxPrice={maxPriceFilter}
+        onMinPriceChange={setMinPriceFilter}
+        onMaxPriceChange={setMaxPriceFilter}
+        filterFreeEvents={filterFreeEvents}
+        onFilterFreeEventsChange={setFilterFreeEvents}
+        theme={theme}
+      />
+
+      <ScrapingOverlay
+        isOpen={showScrapingOverlay}
+        onClose={() => setShowScrapingOverlay(false)}
+        anchorEl={scrapingButtonRef.current}
+        pageLimit={pageLimit}
+        onPageLimitChange={setPageLimit}
+        onForceRefresh={() => setForceRefresh(true)}
+        isLoading={loading}
+        theme={theme}
       />
     </div>
   );

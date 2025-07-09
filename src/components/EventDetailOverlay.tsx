@@ -1,7 +1,6 @@
 // File: src/components/EventDetailOverlay.tsx
 import React, { useEffect, useState, useRef } from "react";
 import { EventData } from "../types";
-import { XMarkIcon } from "./Icons";
 import EventHero from "./EventHero";
 import EventInfoGrid from "./EventInfoGrid";
 import EventContentSections from "./EventContentSections";
@@ -99,7 +98,7 @@ const EventDetailOverlay: React.FC<EventDetailOverlayProps> = ({
   isLoading,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
-  const scrollableContentRef = useRef<HTMLDiv엘리먼트>(null);
+  const scrollableContentRef = useRef<HTMLDivElement>(null);
 
   const getInitialHeroHeight = () => {
     if (typeof window !== "undefined") {

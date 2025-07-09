@@ -29,7 +29,6 @@ const EventMap: React.FC<EventMapProps> = ({ events, mapCenter, mapZoom, onMarke
 
   // NOTE: For production, replace {YOUR_API_KEY} with an actual API key from Stadia Maps.
   // For development, this URL without a key might work for a bit or show a watermark.
-  const stadiaApiKey = "YOUR_STADIA_MAPS_API_KEY"; // Replace this or remove for dev if it works without
 
   if (theme === 'dark') {
     // Stadia Alidade Smooth Dark
@@ -58,10 +57,7 @@ const EventMap: React.FC<EventMapProps> = ({ events, mapCenter, mapZoom, onMarke
     });
   };
 
-  // Ensure the API key placeholder is replaced or the URL works for dev
-  if (theme === 'dark' && tileUrl.includes("YOUR_STADIA_MAPS_API_KEY")) {
-      console.warn("Stadia Maps API Key not set for dark theme. Tiles may not load or may be watermarked.");
-  }
+  
 
 
   return (
