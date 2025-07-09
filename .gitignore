@@ -130,3 +130,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Custom additions for sensitive data and cache
+src-tauri/cache/
+user_settings.json
