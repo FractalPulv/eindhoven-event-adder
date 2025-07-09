@@ -208,14 +208,14 @@ const EventListItem: React.FC<EventListItemProps> = ({
                     icon={<PinIcon />}
                     text={displayLocationOnCard}
                     title="Location"
-                    className="text-white text-shadow-sm" {/* Changed to text-white and added text-shadow-sm */}
+                    className="text-white text-shadow-sm"
                   />
                 )}
                 {displayPriceOnCard !== "Price N/A" && (
                   <GridInfoRow
                     icon={<EuroIcon />}
                     text={displayPriceOnCard}
-                    className="text-green-300 text-shadow-sm" {/* Changed to text-green-300 and added text-shadow-sm */}
+                    className="text-green-300 text-shadow-sm"
                     title="Price"
                   />
                 )}

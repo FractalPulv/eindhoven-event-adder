@@ -482,6 +482,7 @@ function App() {
         handleAddToCalendar={handleAddToCalendar}
         openEventUrl={openEventUrlInBrowser}
         theme={theme}
+        isLoading={!!loadingDetailsFor && overlayEvent?.id === loadingDetailsFor}
       />
     </div>
   );
