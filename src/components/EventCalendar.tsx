@@ -204,6 +204,8 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
                           currentDayIndex={currentDayIndex}
                           totalDays={totalDays}
                           eventColor={eventColors.get(event.id)}
+                          hideDateInCalendar={true}
+                          isCalendarView={true}
                         />
                       );
                     })

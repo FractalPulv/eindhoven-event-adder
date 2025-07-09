@@ -61,3 +61,12 @@ impl Default for Event {
         }
     }
 }
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ScrapingProgress {
+    pub current_page: u32,
+    pub total_pages_estimate: u32,
+    pub events_on_current_page: u32,
+    pub total_events_scraped: u32,
+    pub message: String,
+}

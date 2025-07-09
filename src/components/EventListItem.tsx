@@ -12,6 +12,8 @@ interface EventListItemProps {
   currentDayIndex?: number;
   totalDays?: number;
   eventColor?: { light: string; dark: string };
+  hideDateInCalendar?: boolean; // New prop
+  isCalendarView?: boolean; // New prop for calendar specific rendering
 }
 
 const formatDate = (dateTimeStr?: string): string => {
@@ -78,6 +80,8 @@ const EventListItem: React.FC<EventListItemProps> = ({
   currentDayIndex,
   totalDays,
   eventColor,
+  hideDateInCalendar,
+  isCalendarView,
 }) => {
   if (isContinuation) {
     const bgColorClass = eventColor ? `${eventColor.light} ${eventColor.dark}` : "bg-blue-500 dark:bg-blue-700";
@@ -161,7 +165,7 @@ const EventListItem: React.FC<EventListItemProps> = ({
           if (e.key === "Enter" || e.key === " ") onSelectEvent(event);
         }}
       >
-        <div className="w-full h-24 flex-shrink-0 bg-gray-100 dark:bg-neutral-800"> {/* Adjusted dark bg for image container */}
+        <div className="w-full h-24 flex-shrink-0 bg-gray-100 dark:bg-neutral-800 relative"> {/* Added relative positioning */}
           {event.image_url ? (
             <img
               src={event.image_url}
@@ -190,47 +194,77 @@ const EventListItem: React.FC<EventListItemProps> = ({
               loading="lazy"
             />
           )}
-        </div>
-
-        <div className="p-2 flex-grow flex flex-col justify-between">
-          <div>
-            <h3 className="font-semibold text-xs text-blue-600 dark:text-blue-400 mb-1 leading-tight group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors line-clamp-2">
-              {event.title}
-            </h3>
-
-            <div className="space-y-0.5 text-xs">
-              {displayDateTimeOnCard !== "Date/Time N/A" && (
-                <GridInfoRow
-                  icon={<CalendarIcon />}
-                  text={displayDateTimeOnCard}
-                  title={event.datetime_str_raw_detail || "Date and Time"}
-                />
-              )}
-              {displayLocationOnCard !== "Location N/A" && (
-                <GridInfoRow
-                  icon={<PinIcon />}
-                  text={displayLocationOnCard}
-                  title="Location"
-                />
-              )}
-              {displayPriceOnCard !== "Price N/A" && (
-                <GridInfoRow
-                  icon={<EuroIcon />}
-                  text={displayPriceOnCard}
-                  className="text-green-600 dark:text-green-400"
-                  title="Price"
-                />
-              )}
+          {isCalendarView && (
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent"></div>
+          )}
+          {isCalendarView && (
+            <div className="absolute bottom-0 left-0 right-0 p-3 text-white"> {/* Increased padding */}
+              <h3 className="font-semibold text-xs mb-0.5 leading-tight line-clamp-2 text-shadow-sm"> {/* Added text-shadow-sm */}
+                {event.title}
+              </h3>
+              <div className="space-y-0.5 text-xs">
+                {displayLocationOnCard !== "Location N/A" && (
+                  <GridInfoRow
+                    icon={<PinIcon />}
+                    text={displayLocationOnCard}
+                    title="Location"
+                    className="text-white text-shadow-sm" {/* Changed to text-white and added text-shadow-sm */}
+                  />
+                )}
+                {displayPriceOnCard !== "Price N/A" && (
+                  <GridInfoRow
+                    icon={<EuroIcon />}
+                    text={displayPriceOnCard}
+                    className="text-green-300 text-shadow-sm" {/* Changed to text-green-300 and added text-shadow-sm */}
+                    title="Price"
+                  />
+                )}
+              </div>
             </div>
-          </div>
-
-          {event.short_description &&
-            (!isSelectedInGrid || !event.isDetailed) && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed line-clamp-2">
-                {event.short_description}
-              </p>
-            )}
+          )}
         </div>
+
+        {!isCalendarView && (
+          <div className="p-2 flex-grow flex flex-col justify-between">
+            <div>
+              <h3 className="font-semibold text-xs text-blue-600 dark:text-blue-400 mb-1 leading-tight group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors line-clamp-2">
+                {event.title}
+              </h3>
+
+              <div className="space-y-0.5 text-xs">
+                {!hideDateInCalendar && displayDateTimeOnCard !== "Date/Time N/A" && (
+                  <GridInfoRow
+                    icon={<CalendarIcon />}
+                    text={displayDateTimeOnCard}
+                    title={event.datetime_str_raw_detail || "Date and Time"}
+                  />
+                )}
+                {displayLocationOnCard !== "Location N/A" && (
+                  <GridInfoRow
+                    icon={<PinIcon />}
+                    text={displayLocationOnCard}
+                    title="Location"
+                  />
+                )}
+                {displayPriceOnCard !== "Price N/A" && (
+                  <GridInfoRow
+                    icon={<EuroIcon />}
+                    text={displayPriceOnCard}
+                    className="text-green-600 dark:text-green-400"
+                    title="Price"
+                  />
+                )}
+              </div>
+            </div>
+
+            {event.short_description &&
+              (!isSelectedInGrid || !event.isDetailed) && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed line-clamp-2">
+                  {event.short_description}
+                </p>
+              )}
+          </div>
+        )}
       </div>
     </Tilt>
   );

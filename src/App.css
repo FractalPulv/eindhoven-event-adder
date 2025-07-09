@@ -76,6 +76,10 @@ html {
   animation: pulse-fast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+.text-shadow-sm {
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+}
+
 /* Leaflet Map Dark Mode Tile Inversion (Alternative if specific dark tiles are not used or as fallback) */
 /* This is less ideal than using proper dark tiles, but can be a quick fix */
 /* We will use CartoDB dark tiles instead, so this is commented out.

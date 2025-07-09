@@ -8,18 +8,33 @@ use super::utils::*;
 use crate::models::Event;
 use crate::cache::{self, CacheEntry};
 
-pub fn fetch_event_list_summaries(client: &Client, page_limit: Option<u32>) -> Result<Vec<Event>, Box<dyn Error>> {
-    // Try to read from cache first
-    if let Some(cached_entry) = cache::read_cache::<Vec<Event>>() {
-        if cached_entry.is_fresh() {
-            log::info!("Returning events from cache.");
-            return Ok(cached_entry.data);
+pub fn fetch_event_list_summaries(
+    client: &Client,
+    page_limit: Option<u32>,
+    force_refresh: bool,
+    progress_callback: impl Fn(crate::models::ScrapingProgress) + Send + 'static,
+) -> Result<Vec<Event>, Box<dyn Error>> {
+    // Try to read from cache first, unless force_refresh is true
+    if !force_refresh {
+        if let Some(cached_entry) = cache::read_cache::<Vec<Event>>() {
+            if cached_entry.is_fresh() {
+                log::info!("Returning events from cache.");
+                progress_callback(crate::models::ScrapingProgress {
+                    current_page: 0,
+                    total_pages_estimate: 0,
+                    events_on_current_page: cached_entry.data.len() as u32,
+                    total_events_scraped: cached_entry.data.len() as u32,
+                    message: "Loaded from cache.".to_string(),
+                });
+                return Ok(cached_entry.data);
+            }
         }
     }
 
     let mut all_events: Vec<Event> = Vec::new();
     let mut page = 1;
     let mut has_more_pages = true;
+    let mut total_events_scraped = 0;
 
     while has_more_pages {
         if let Some(limit) = page_limit {
@@ -157,6 +172,17 @@ pub fn fetch_event_list_summaries(client: &Client, page_limit: Option<u32>) -> R
         }
         all_events.push(event);
         }
+        total_events_scraped += page_events_found;
+
+        let total_pages_estimate = if page_events_found == 0 { page } else { page + 5 }; // Rough estimate
+
+        progress_callback(crate::models::ScrapingProgress {
+            current_page: page,
+            total_pages_estimate,
+            events_on_current_page: page_events_found,
+            total_events_scraped,
+            message: format!("Scraping page {}...", page),
+        });
 
         if page_events_found == 0 {
             log::info!("No event cards found on page {}. Assuming last page.", page);
@@ -178,6 +204,15 @@ pub fn fetch_event_list_summaries(client: &Client, page_limit: Option<u32>) -> R
     if let Err(e) = cache::write_cache(&cache_entry) {
         log::error!("Failed to write events to cache: {}", e);
     }
+
+    progress_callback(crate::models::ScrapingProgress {
+        current_page: page - 1, // Last successfully scraped page
+        total_pages_estimate: page - 1,
+        events_on_current_page: 0,
+        total_events_scraped,
+        message: "Scraping complete.".to_string(),
+    });
+
     Ok(all_events)
 }
 
@@ -409,7 +444,7 @@ pub(super) fn get_all_events_with_details_internal_testing() -> Result<Vec<Event
         .user_agent(USER_AGENT_FOR_SCRAPING_INTERNAL_TEST)
         .timeout(std::time::Duration::from_secs(15))
         .build()?;
-    let event_summaries = fetch_event_list_summaries(&client, None)?;
+    let event_summaries = fetch_event_list_summaries(&client, None, false, |_| {})?;
     let mut detailed_events = Vec::new();
     for summary in event_summaries {
         match fetch_event_details(&client, summary) {

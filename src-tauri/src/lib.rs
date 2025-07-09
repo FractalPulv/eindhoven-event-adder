@@ -3,9 +3,10 @@ mod models;
 mod scraper; // This now refers to src/scraper/mod.rs
 mod cache;
 
-use models::Event;
+use models::{Event, ScrapingProgress};
 use reqwest::blocking::Client;
 use std::time::Duration;
+use tauri::Emitter;
 
 // Import chrono types for ICS generation
 use chrono::{NaiveDateTime, TimeZone, Utc};
@@ -40,8 +41,14 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn fetch_events_rust(page_limit: Option<u32>) -> Result<Vec<Event>, String> {
-    log::info!("fetch_events_rust (summaries) command invoked with page_limit: {:?}", page_limit);
+async fn fetch_events_rust(window: tauri::Window, page_limit: Option<u32>, force_refresh: bool) -> Result<Vec<Event>, String> {
+    log::info!("fetch_events_rust (summaries) command invoked with page_limit: {:?}, force_refresh: {}", page_limit, force_refresh);
+
+    let progress_window = window.clone();
+    let progress_callback = move |progress: models::ScrapingProgress| {
+        let _ = progress_window.emit("scraping_progress", progress);
+    };
+
     match tauri::async_runtime::spawn_blocking(move || {
         let client_builder = Client::builder()
             .user_agent(APP_USER_AGENT_FOR_SCRAPING) 
@@ -49,7 +56,7 @@ async fn fetch_events_rust(page_limit: Option<u32>) -> Result<Vec<Event>, String
 
         match client_builder.build() {
             Ok(client) => {
-                scraper::fetch_event_list_summaries(&client, page_limit) 
+                scraper::fetch_event_list_summaries(&client, page_limit, force_refresh, progress_callback)
                     .map_err(|e| e.to_string())
             }
             Err(e) => Err(format!("Failed to build HTTP client: {}", e.to_string())),

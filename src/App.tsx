@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { listen } from "@tauri-apps/api/event"; // Import listen
 
 // Components
 import EventList from "./components/EventList";
@@ -23,6 +24,14 @@ import { EventData } from "./types";
 const EindhovenCentraalStation: LatLngExpression = [51.4416, 5.4697];
 type Theme = "light" | "dark";
 type View = "list" | "map" | "calendar";
+
+interface ScrapingProgress {
+  current_page: number;
+  total_pages_estimate: number;
+  events_on_current_page: number;
+  total_events_scraped: number;
+  message: string;
+}
 
 function App() {
   const [events, setEvents] = useState<EventData[]>([]);
@@ -55,6 +64,7 @@ function App() {
   const [pageLimit, setPageLimit] = useState<number | undefined>(undefined); // New state for page limit
   const [forceRefresh, setForceRefresh] = useState<boolean>(false); // New state to force refresh
   const [isScraping, setIsScraping] = useState<boolean>(false); // New state for scraping status
+  const [scrapingProgress, setScrapingProgress] = useState<ScrapingProgress | null>(null); // New state for scraping progress
 
   useEffect(() => {
     // console.log("Theme effect running, theme is:", theme); // For debugging
@@ -76,6 +86,12 @@ function App() {
       setLoading(true);
       setError(null);
       setIsScraping(true); // Start scraping animation
+      setScrapingProgress(null); // Reset progress
+
+      const unlisten = await listen<ScrapingProgress>("scraping_progress", (event) => {
+        setScrapingProgress(event.payload);
+      });
+
       try {
         const fetchedSummaries = await invoke<EventData[]>("fetch_events_rust", { pageLimit: pageLimit, forceRefresh: forceRefresh });
         setEvents(
@@ -90,6 +106,8 @@ function App() {
         setLoading(false);
         setForceRefresh(false); // Reset forceRefresh after fetch
         setIsScraping(false); // End scraping animation
+        setScrapingProgress(null); // Clear progress after completion/error
+        unlisten(); // Unlisten from the event
       }
     };
     loadEventSummaries();
@@ -399,17 +417,24 @@ function App() {
       </header>
 
       <main className="flex-grow overflow-y-auto bg-gray-100 dark:bg-black relative">
-        {loading && !isFetchingAllDetails && (
+        {loading && !isFetchingAllDetails && !isScraping && (
           <p className="p-4 text-center text-gray-700 dark:text-gray-300 text-base">
             Loading event summaries...
           </p>
         )}
-        {isScraping && (
+        {isScraping && scrapingProgress && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 dark:bg-black bg-opacity-75 dark:bg-opacity-75 z-50">
             <div className="w-64 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden">
-              <div className="bg-blue-600 h-2.5 rounded-full animate-pulse-fast"></div>
+              <div
+                className="bg-blue-600 h-2.5 rounded-full"
+                style={{
+                  width: `${(scrapingProgress.current_page / scrapingProgress.total_pages_estimate) * 100}%`,
+                }}
+              ></div>
             </div>
-            <p className="mt-3 text-gray-700 dark:text-gray-300 text-base">Scraping events...</p>
+            <p className="mt-3 text-gray-700 dark:text-gray-300 text-base">
+              {scrapingProgress.message} (Page {scrapingProgress.current_page} of ~{scrapingProgress.total_pages_estimate}, {scrapingProgress.total_events_scraped} events)
+            </p>
           </div>
         )}
         {error && (
